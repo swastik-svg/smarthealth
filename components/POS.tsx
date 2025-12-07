@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Search, Plus, Minus, Trash, ShoppingCart, CheckCircle, Lock } from 'lucide-react';
 import { Medicine, CartItem, Sale } from '../types';

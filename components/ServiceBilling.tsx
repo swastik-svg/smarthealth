@@ -1,6 +1,5 @@
 
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Plus, Minus, Trash, Receipt, CheckCircle, Lock, Import, User, FileText, Pill, Activity, X, FlaskConical, Printer, ArrowRight, ScanLine, ListFilter, History } from 'lucide-react';
 import { CartItem, Sale, ServiceRecord, ServiceCatalogItem, AppView } from '../types';
 import { dbService } from '../services/db';
@@ -8,28 +7,30 @@ import { dbService } from '../services/db';
 interface ServiceBillingProps {
   onProcessBilling: (sale: Sale) => Promise<void>;
   activeOrgId?: string;
+  serviceRecords: ServiceRecord[];
 }
 
-export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling, activeOrgId }) => {
+export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling, activeOrgId, serviceRecords }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [success, setSuccess] = useState(false);
   
-  // Pending Orders State
-  const [pendingOrders, setPendingOrders] = useState<ServiceRecord[]>([]);
   const [importedRecordId, setImportedRecordId] = useState<string | null>(null);
 
   // Recent Sales State
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Manual Search & Entry State
   const [manualSearchId, setManualSearchId] = useState('');
   
   // Search Autocomplete State
-  const [allPatients, setAllPatients] = useState<ServiceRecord[]>([]);
   const [suggestions, setSuggestions] = useState<ServiceRecord[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // Track Patient Demographics for seamless transition to Rabies Clinic
+  const [currentPatientDetails, setCurrentPatientDetails] = useState<{age: number, gender: string} | null>(null);
 
   // Printing State
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -60,41 +61,15 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
 
   const loadData = async () => {
      try {
-        const [records, allSales] = await Promise.all([
-           dbService.getAllServiceRecords(),
-           dbService.getAllSales()
-        ]);
-        
-        let orgRecords = records;
+        const allSales = await dbService.getAllSales();
         let orgSales = allSales;
 
         if (activeOrgId && activeOrgId !== 'ALL') {
-           orgRecords = records.filter(r => r.organizationId === activeOrgId);
            orgSales = allSales.filter(s => s.organizationId === activeOrgId);
         }
 
-        // 1. Pending Orders
-        const pending = orgRecords.filter(r => 
-           r.status === 'COMPLETED' && (
-              (r.serviceRequests && r.serviceRequests.some(req => req.status === 'PENDING')) ||
-              (r.prescription && r.prescription.length > 0 && r.prescriptionStatus === 'PENDING') ||
-              (r.labRequests && r.labRequests.some(lab => lab.billingStatus === 'PENDING'))
-           )
-        );
-        setPendingOrders(pending.sort((a,b) => b.timestamp - a.timestamp));
-
-        // 2. All Unique Patients
-        const uniquePatientsMap = new Map<string, ServiceRecord>();
-        orgRecords.forEach(r => {
-           const existing = uniquePatientsMap.get(r.patientId);
-           if (!existing || r.timestamp > existing.timestamp) {
-              uniquePatientsMap.set(r.patientId, r);
-           }
-        });
-        setAllPatients(Array.from(uniquePatientsMap.values()));
-
-        // 3. Recent Sales
-        setRecentSales(orgSales.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10));
+        // Recent Sales
+        setRecentSales(orgSales.sort((a,b) => b.timestamp - a.timestamp).slice(0, 50));
 
      } catch (e) {
         console.error("Failed to load billing data", e);
@@ -109,6 +84,36 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         console.error("Failed to load catalog");
      }
   };
+
+  // Derive Pending Orders and All Patients from Props
+  const pendingOrders = useMemo(() => {
+      let orgRecords = serviceRecords;
+      if (activeOrgId && activeOrgId !== 'ALL') {
+         orgRecords = serviceRecords.filter(r => r.organizationId === activeOrgId);
+      }
+      return orgRecords.filter(r => 
+         r.status === 'COMPLETED' && (
+            (r.serviceRequests && r.serviceRequests.some(req => req.status === 'PENDING')) ||
+            (r.prescription && r.prescription.length > 0 && r.prescriptionStatus === 'PENDING') ||
+            (r.labRequests && r.labRequests.some(lab => lab.billingStatus === 'PENDING'))
+         )
+      ).sort((a,b) => b.timestamp - a.timestamp);
+  }, [serviceRecords, activeOrgId]);
+
+  const allPatients = useMemo(() => {
+      let orgRecords = serviceRecords;
+      if (activeOrgId && activeOrgId !== 'ALL') {
+         orgRecords = serviceRecords.filter(r => r.organizationId === activeOrgId);
+      }
+      const uniquePatientsMap = new Map<string, ServiceRecord>();
+      orgRecords.forEach(r => {
+         const existing = uniquePatientsMap.get(r.patientId);
+         if (!existing || r.timestamp > existing.timestamp) {
+            uniquePatientsMap.set(r.patientId, r);
+         }
+      });
+      return Array.from(uniquePatientsMap.values());
+  }, [serviceRecords, activeOrgId]);
 
   // Group services for the tab view
   const categories = ['GENERAL_TREATMENT', 'LAB', 'X_RAY', 'USG', 'HOSPITAL'];
@@ -201,6 +206,8 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
      }
      
      setCustomerName(record.patientName + ` (${record.patientId})`);
+     // Capture demographics
+     setCurrentPatientDetails({ age: record.age, gender: record.gender });
      setManualSearchId('');
      setShowSuggestions(false);
   };
@@ -231,6 +238,8 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         importPendingRequest(pendingRecord);
      } else {
         setCustomerName(record.patientName + ` (${record.patientId})`);
+        // Capture demographics
+        setCurrentPatientDetails({ age: record.age, gender: record.gender });
         setManualSearchId('');
         setShowSuggestions(false);
         setCart([]); 
@@ -285,6 +294,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
      setCart([]);
      setCustomerName('');
      setImportedRecordId(null);
+     setCurrentPatientDetails(null);
   };
 
   const totalAmount = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -302,7 +312,10 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
       items: cart,
       totalAmount,
       customerName: customerName,
-      organizationId: activeOrgId
+      organizationId: activeOrgId,
+      // Pass demographics if available (from import or search)
+      patientAge: currentPatientDetails?.age,
+      patientGender: currentPatientDetails?.gender
     };
 
     await onProcessBilling(sale);
@@ -325,6 +338,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
     setCart([]);
     setCustomerName('');
     setImportedRecordId(null);
+    setCurrentPatientDetails(null);
     setIsManualModalOpen(false); 
     
     setTimeout(() => setSuccess(false), 3000);
@@ -377,6 +391,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
           <div><span>Date:</span> <span>${new Date(sale.timestamp).toLocaleDateString()}</span></div>
           <div><span>Time:</span> <span>${new Date(sale.timestamp).toLocaleTimeString()}</span></div>
           <div><span>Customer:</span> <span>${sale.customerName}</span></div>
+          ${sale.patientAge ? `<div><span>Age/Sex:</span> <span>${sale.patientAge} / ${sale.patientGender}</span></div>` : ''}
         </div>
         <table>
           <thead>
@@ -416,7 +431,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
   const isBillingDisabled = activeOrgId === 'ALL';
 
   return (
-    <div className="flex flex-col lg:h-[calc(100vh-8rem)] h-auto gap-4 pb-4">
+    <div className="flex flex-col lg:h-[calc(100vh-6rem)] h-auto gap-4 pb-4">
       
       {/* TOP SEARCH BAR */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between z-20 shrink-0 sticky top-0 md:static">
@@ -430,6 +445,16 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
              </div>
           </div>
           <div className="flex items-center gap-2 w-full md:w-auto">
+             {/* History Button */}
+             <button 
+                onClick={() => setShowHistoryModal(true)}
+                className="flex items-center gap-2 px-3 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 text-sm font-medium transition-colors"
+                title="View Billing History"
+             >
+                <History className="w-4 h-4" />
+                <span className="hidden sm:inline">इतिहास (History)</span>
+             </button>
+
              <div className="relative w-full md:w-96">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
@@ -465,7 +490,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
 
       <div className="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden min-h-0">
          {/* LEFT COLUMN: Pending Requests */}
-         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-[500px] lg:min-h-0">
+         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-[400px] lg:min-h-0">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 shrink-0">
                   <div>
@@ -564,7 +589,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
          </div>
 
          {/* RIGHT COLUMN: Invoice / Cart */}
-         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-[500px] lg:min-h-0">
+         <div className="w-full lg:w-1/2 flex flex-col gap-4 lg:h-full">
              <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full z-10 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex items-center justify-between shrink-0">
                    <div className="flex items-center gap-2">
@@ -572,13 +597,20 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                       <Receipt className="w-5 h-5" />
                       </div>
                       <div>
-                      <h3 className="font-bold text-slate-800">बिल विवरण (Invoice)</h3>
-                      <p className="text-xs text-slate-500">
-                         {importedRecordId ? 'Imported from Consultation' : 'Manual / Walk-in Bill'}
-                      </p>
+                        <h3 className="font-bold text-slate-800">बिल विवरण (Invoice)</h3>
+                        <p className="text-xs text-slate-500">
+                            {importedRecordId ? 'Imported from Consultation' : 'Manual / Walk-in Bill'}
+                        </p>
                       </div>
                    </div>
                    <div className="flex items-center gap-2">
+                      {currentPatientDetails && (
+                          <div className="hidden sm:flex gap-2 text-xs bg-teal-50 text-teal-800 px-3 py-1 rounded-lg border border-teal-100 font-medium">
+                              <span>{currentPatientDetails.age} Yrs</span>
+                              <span className="w-px h-full bg-teal-200"></span>
+                              <span>{currentPatientDetails.gender}</span>
+                          </div>
+                      )}
                       {cart.length > 0 && (
                          <button 
                          onClick={clearCart}
@@ -693,60 +725,68 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
 
       </div>
 
-      {/* RECENT TRANSACTIONS TABLE */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0 mb-6 lg:mb-0">
-          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-wide">
-                  <History className="w-4 h-4 text-slate-500" /> भर्खरका कारोबारहरू (Recent Bills)
-              </h3>
-          </div>
-          <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm min-w-[600px]">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                          <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Date</th>
-                          <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Receipt No</th>
-                          <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Customer</th>
-                          <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase text-right">Amount</th>
-                          <th className="px-6 py-3 w-16 text-right">Action</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                      {recentSales.length === 0 ? (
-                          <tr>
-                              <td colSpan={5} className="px-6 py-4 text-center text-slate-400 italic">कुनै कारोबार भेटिएन।</td>
-                          </tr>
-                      ) : (
-                          recentSales.map(sale => (
+      {/* RECENT TRANSACTIONS MODAL */}
+      {showHistoryModal && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                     <History className="w-5 h-5 text-teal-600" /> भर्खरका कारोबारहरू (Recent Bills)
+                  </h3>
+                  <button onClick={() => setShowHistoryModal(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200">
+                     <X className="w-5 h-5" />
+                  </button>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto p-0">
+                  <table className="w-full text-left text-sm">
+                     <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                        <tr>
+                           <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Date</th>
+                           <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Receipt No</th>
+                           <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Customer</th>
+                           <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase text-right">Amount</th>
+                           <th className="px-6 py-3 w-16 text-right">Action</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100">
+                        {recentSales.length === 0 ? (
+                           <tr>
+                              <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">कुनै कारोबार भेटिएन।</td>
+                           </tr>
+                        ) : (
+                           recentSales.map(sale => (
                               <tr key={sale.id} className="hover:bg-slate-50">
-                                  <td className="px-6 py-3 text-slate-500 whitespace-nowrap">
-                                      {new Date(sale.timestamp).toLocaleDateString()} <span className="text-xs text-slate-400">{new Date(sale.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                  </td>
-                                  <td className="px-6 py-3 font-mono text-slate-600 text-xs">
-                                      #{sale.id.slice(0, 8)}
-                                  </td>
-                                  <td className="px-6 py-3 font-medium text-slate-800">
-                                      {sale.customerName}
-                                  </td>
-                                  <td className="px-6 py-3 text-right font-bold text-teal-600">
-                                      {sale.totalAmount.toFixed(2)}
-                                  </td>
-                                  <td className="px-6 py-3 text-right">
-                                      <button 
-                                          onClick={() => handlePrintReceipt(sale)}
-                                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors"
-                                          title="Re-print Receipt"
-                                      >
-                                          <Printer className="w-4 h-4" />
-                                      </button>
-                                  </td>
+                                 <td className="px-6 py-3 text-slate-500 whitespace-nowrap">
+                                    {new Date(sale.timestamp).toLocaleDateString()} <span className="text-xs text-slate-400">{new Date(sale.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                 </td>
+                                 <td className="px-6 py-3 font-mono text-slate-600 text-xs">
+                                    #{sale.id.slice(0, 8)}
+                                 </td>
+                                 <td className="px-6 py-3 font-medium text-slate-800">
+                                    {sale.customerName}
+                                 </td>
+                                 <td className="px-6 py-3 text-right font-bold text-teal-600">
+                                    {sale.totalAmount.toFixed(2)}
+                                 </td>
+                                 <td className="px-6 py-3 text-right">
+                                    <button 
+                                       onClick={() => handlePrintReceipt(sale)}
+                                       className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors"
+                                       title="Re-print Receipt"
+                                    >
+                                       <Printer className="w-4 h-4" />
+                                    </button>
+                                 </td>
                               </tr>
-                          ))
-                      )}
-                  </tbody>
-              </table>
-          </div>
-      </div>
+                           ))
+                        )}
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+      )}
       
       {/* MANUAL BILLING MODAL (Service Picker) */}
       {isManualModalOpen && (

@@ -1,8 +1,10 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Medicine } from "../types";
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
+  // Safe process.env access for browser compatibility
+  const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : '';
   if (!apiKey) {
     console.error("API_KEY is missing from environment variables.");
     return null;

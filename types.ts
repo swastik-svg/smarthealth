@@ -25,6 +25,8 @@ export interface Sale {
   customerName?: string;
   serviceId?: string; // Link sale to a service if applicable
   organizationId?: string;
+  patientAge?: number;    // Added to persist demographics
+  patientGender?: string; // Added to persist demographics
 }
 
 export interface DashboardStats {
@@ -69,11 +71,16 @@ export enum AppView {
   REPORT_REPRODUCTIVE_HEALTH = 'REPORT_REPRODUCTIVE_HEALTH', // New RH Report
   REPORT_ORC = 'REPORT_ORC', // New ORC Report
 
+  // Jinshi (Inventory Records)
+  JINSHI_PARENT = 'JINSHI_PARENT',
+  JINSHI_MAG_FARAM = 'JINSHI_MAG_FARAM',
+  JINSHI_KHARID_ADESH = 'JINSHI_KHARID_ADESH',
+  JINSHI_DAKHILA_PRATIBEDAN = 'JINSHI_DAKHILA_PRATIBEDAN', // New Dakhila Report
+
   // Other Modules
   INVENTORY = 'INVENTORY',
   POS = 'POS',
   SERVICE_BILLING = 'SERVICE_BILLING', // Hospital Service Billing
-  AI_ASSISTANT = 'AI_ASSISTANT',
   SETTINGS = 'SETTINGS',
   RATE_UPDATE = 'RATE_UPDATE', // Virtual
 }
@@ -118,12 +125,14 @@ export interface UserPermissions {
   accessRabies: boolean;
   accessNonCommunicable: boolean;
 
+  // Jinshi Access
+  accessJinshi: boolean;
+
   // Admin / System
   viewFinancials: boolean; // Dashboard stats & reports
   viewReports: boolean;    // Access to general reports menu
   manageSettings: boolean; // Gatekeeper for the Settings Page
   manageUsers: boolean;
-  aiAccess: boolean;
 
   // Granular Settings Access
   settings_General: boolean; // Store Profile

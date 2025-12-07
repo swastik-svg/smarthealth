@@ -34,8 +34,7 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
   ];
 
   useEffect(() => {
-    // Default month logic could vary, setting to index 10 (Falgun) as per request example
-    setSelectedMonth(nepaliMonths[10]); 
+    setSelectedMonth(nepaliMonths[10]); // Default to Falgun
     loadData();
     loadUserDetails();
   }, [activeOrgId, currentUser]);
@@ -81,13 +80,12 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
         }
         
         // 2. Fallback: Parse 'dateOfBite' (e.g., 2081-11-05) if month is missing
-        // This fixes the issue where old records disappear
         if (r.rabiesData?.dateOfBite) {
            const parts = r.rabiesData.dateOfBite.split(/[-/.]/);
            if (parts.length >= 2) {
-              const monthNum = parseInt(parts[1]); // e.g. 11
+              const monthNum = parseInt(parts[1]); 
               if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
-                 const monthName = nepaliMonths[monthNum - 1]; // Index 10 is Falgun
+                 const monthName = nepaliMonths[monthNum - 1]; 
                  return monthName === selectedMonth;
               }
            }
@@ -182,9 +180,40 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto pb-10 bg-white min-h-screen">
-       
+       <style>{`
+         @media print {
+           @page { size: landscape; margin: 5mm; }
+           /* Hide everything initially */
+           body * {
+             visibility: hidden;
+           }
+           /* Show only report content */
+           #printable-report, #printable-report * {
+             visibility: visible;
+           }
+           /* Position report at top left */
+           #printable-report {
+             position: absolute;
+             left: 0;
+             top: 0;
+             width: 100%;
+             margin: 0;
+             padding: 0;
+             background-color: white;
+           }
+           /* Ensure colors are printed */
+           * {
+             -webkit-print-color-adjust: exact !important;
+             print-color-adjust: exact !important;
+           }
+           /* Hide scrollbars and interactive elements */
+           ::-webkit-scrollbar { display: none; }
+           .no-print { display: none !important; }
+         }
+       `}</style>
+
        {/* CONTROLS (Hidden in Print) */}
-       <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col md:flex-row gap-4 justify-between items-center print:hidden">
+       <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col md:flex-row gap-4 justify-between items-center no-print">
           <div className="flex gap-4 items-center">
              <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-slate-500" />
@@ -230,7 +259,7 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
        </div>
 
        {/* REPORT CONTENT */}
-       <div className="p-8 print:p-0 font-serif text-black">
+       <div id="printable-report" className="p-8 font-serif text-black w-full bg-white">
           
           {/* Header */}
           <div className="text-center mb-6 space-y-1">
@@ -266,7 +295,8 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
                    <tr>
                       {matrix.animals.map(a => (
                          <th key={a} className="border border-black p-1 font-normal w-16 text-[10px] sm:text-xs">
-                            {a.replace(' bite','').replace(' contact','')} <br/> bite
+                            {a === 'Saliva' ? 'Saliva' : a === 'Other' ? 'Other' : a} <br/> 
+                            {a === 'Saliva' ? 'contact' : a === 'Other' ? 'specify' : 'bite'}
                          </th>
                       ))}
                       {/* Stock Placeholders (empty cells for rows 1-4) */}
@@ -399,7 +429,7 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
                       <div className="font-script text-xl mb-1 text-blue-800 print:text-black">{approverFullName}</div>
                       <div className="border-t border-dotted border-black mb-2"></div>
                       <div className="font-bold flex items-center justify-center gap-1">
-                         Approved By: <CheckSquare className="w-4 h-4 text-green-600 print:hidden" />
+                         Approved By: <CheckSquare className="w-4 h-4 text-green-600 no-print" />
                       </div>
                       <div className="text-sm font-medium">{approverFullName} (Sub-Admin)</div>
                    </>
@@ -408,7 +438,7 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
                       {(userRole === UserRole.SUB_ADMIN || userRole === UserRole.SUPER_ADMIN) && (
                           <button 
                              onClick={handleApprove}
-                             className="mb-2 bg-blue-50 text-blue-600 px-3 py-1 rounded text-xs border border-blue-200 hover:bg-blue-100 print:hidden"
+                             className="mb-2 bg-blue-50 text-blue-600 px-3 py-1 rounded text-xs border border-blue-200 hover:bg-blue-100 no-print"
                           >
                              Click to Approve
                           </button>

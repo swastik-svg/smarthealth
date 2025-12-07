@@ -7,7 +7,9 @@ import { POS } from './components/POS';
 import { ServiceBilling } from './components/ServiceBilling';
 import { Services } from './components/Services';
 import { Pathology } from './components/Pathology';
-import { AIAssistant } from './components/AIAssistant';
+import { JinshiMagFaram } from './components/JinshiMagFaram';
+import { JinshiKharidAdesh } from './components/JinshiKharidAdesh';
+import { JinshiDakhilaPratibedan } from './components/JinshiDakhilaPratibedan';
 import { Login } from './components/Login';
 import { Settings } from './components/Settings';
 import { ReportRabies } from './components/ReportRabies';
@@ -44,6 +46,9 @@ const App: React.FC = () => {
   // Super Admin Filter State
   const [orgFilter, setOrgFilter] = useState<string>('ALL');
 
+  // Global Service Records State (Centralized)
+  const [serviceRecords, setServiceRecords] = useState<any[]>([]);
+
   // Default permissions
   const [permissions, setPermissions] = useState<UserPermissions>({
     inventoryView: false,
@@ -72,11 +77,12 @@ const App: React.FC = () => {
     accessRabies: false,
     accessNonCommunicable: false,
 
+    accessJinshi: false, // New Jinshi permission
+
     viewFinancials: false,
     viewReports: false,
     manageSettings: false,
     manageUsers: false,
-    aiAccess: false,
 
     settings_General: false,
     settings_Rates: false,
@@ -86,17 +92,26 @@ const App: React.FC = () => {
 
   // Shared Data Loader
   const loadData = async () => {
+    // Add timeout to prevent infinite loading
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Request Timed Out")), 10000)
+    );
+
     try {
-      const [loadedInventory, loadedSales, loadedUsers] = await Promise.all([
+      const dataPromise = Promise.all([
         dbService.getAllMedicines(),
         dbService.getAllSales(),
-        dbService.getAllUsers()
+        dbService.getAllUsers(),
+        dbService.getAllServiceRecords()
       ]);
+
+      const [loadedInventory, loadedSales, loadedUsers, loadedRecords] = await Promise.race([dataPromise, timeoutPromise]) as [Medicine[], Sale[], User[], any[]];
       
       // Sort sales by timestamp descending
       setSales(loadedSales.sort((a, b) => b.timestamp - a.timestamp));
       setInventory(loadedInventory);
       setAllUsers(loadedUsers);
+      setServiceRecords(loadedRecords);
       setError(null);
     } catch (err: any) {
       console.error("Failed to load database:", err);
@@ -271,6 +286,9 @@ const App: React.FC = () => {
       setSales(prev => [saleWithOrg, ...prev]);
       setInventory(newInventoryState);
       
+      // REFRESH DATA to catch any side-effects (like auto-created Rabies records)
+      await loadData();
+      
     } catch (err) {
       console.error("Error processing sale", err);
       alert("Transaction failed. Please try again.");
@@ -287,6 +305,10 @@ const App: React.FC = () => {
         
         await dbService.processSale(saleWithOrg, []);
         setSales(prev => [saleWithOrg, ...prev]);
+        
+        // REFRESH DATA to catch any side-effects (like auto-created Rabies records)
+        await loadData();
+        
      } catch (err) {
         console.error("Error billing service", err);
         alert("Billing failed.");
@@ -300,6 +322,8 @@ const App: React.FC = () => {
     });
     setInventory(newMainInventory);
     setSales(prev => [newSale, ...prev]);
+    // Refresh to update records status
+    loadData();
   };
 
   if (isLoading) {
@@ -360,11 +384,12 @@ const App: React.FC = () => {
            onServiceComplete: handleServiceComplete,
            permissions: permissions,
            activeOrgId: activeOrgContext,
+           records: serviceRecords // Pass fetched records
         };
 
         switch (currentView) {
           case AppView.DASHBOARD:
-            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
+            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} serviceRecords={serviceRecords} />;
           
           case AppView.PATIENT_REGISTRATION:
             return <Services {...commonServiceProps} department={AppView.GENERAL_TREATMENT} title="सेवाग्राही दर्ता (Reception)" autoOpenRegistration={true} />;
@@ -408,6 +433,18 @@ const App: React.FC = () => {
           case AppView.NON_COMMUNICABLE:
             return <Services {...commonServiceProps} department={AppView.NON_COMMUNICABLE} title="Non-Communicable Disease" />;
 
+          case AppView.JINSHI_MAG_FARAM:
+            if (!permissions.accessJinshi) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <JinshiMagFaram />;
+
+          case AppView.JINSHI_KHARID_ADESH:
+            if (!permissions.accessJinshi) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <JinshiKharidAdesh />;
+
+          case AppView.JINSHI_DAKHILA_PRATIBEDAN:
+            if (!permissions.accessJinshi) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <JinshiDakhilaPratibedan />;
+
           // Reports
           case AppView.REPORT_RABIES:
              if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
@@ -447,7 +484,7 @@ const App: React.FC = () => {
 
           case AppView.PATHOLOGY:
             if (!permissions.accessPathology) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-            return <Pathology />;
+            return <Pathology serviceRecords={serviceRecords} />;
 
           case AppView.INVENTORY:
             if (!permissions.inventoryView) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
@@ -459,18 +496,14 @@ const App: React.FC = () => {
           
           case AppView.SERVICE_BILLING:
              if (!permissions.posAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-             return <ServiceBilling onProcessBilling={handleProcessServiceBilling} activeOrgId={activeOrgContext} />;
-          
-          case AppView.AI_ASSISTANT:
-            if (!permissions.aiAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-            return <AIAssistant inventory={filteredInventory} />;
+             return <ServiceBilling onProcessBilling={handleProcessServiceBilling} activeOrgId={activeOrgContext} serviceRecords={serviceRecords} />;
           
           case AppView.SETTINGS:
             if (!permissions.manageSettings) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
             return <Settings inventory={filteredInventory} sales={filteredSales} currentUser={currentUser} permissions={permissions} />;
           
           default:
-            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
+            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} serviceRecords={serviceRecords} />;
         }
       })()}
     </Layout>

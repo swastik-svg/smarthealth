@@ -112,16 +112,79 @@ export const dbService = {
   async processSale(sale: Sale, updatedMedicines: Medicine[]) {
     // 1. Insert Sale
     const { error: saleError } = await supabase.from(TABLE_SALES).insert(sale);
-    if (saleError) throw new Error(saleError.message);
+    if (saleError) {
+        if (saleError.message.includes("Could not find the") && saleError.message.includes("column")) {
+            throw new Error("Database Schema Mismatch: Missing columns in 'sales' table. Go to Login -> Click 'Copy Full SQL' -> Run in Supabase.");
+        }
+        throw new Error(saleError.message);
+    }
 
-    // 2. Update Inventory (Sequentially for simplicity, ideally RPC)
+    // 2. Update Inventory
     for (const med of updatedMedicines) {
       const { error: medError } = await supabase
         .from(TABLE_MEDICINES)
-        .update({ stock: med.stock }) // Only update stock to minimize payload
+        .update({ stock: med.stock })
         .eq('id', med.id);
       
       if (medError) console.error("Failed to update stock for", med.name, medError);
+    }
+
+    // 3. AUTO-CREATE SERVICE RECORD FOR RABIES
+    // If the bill contains "Rabies" or "ARV", automatically add patient to Rabies Queue
+    const hasRabies = sale.items.some(item => 
+       item.name.toLowerCase().includes('rabies') || 
+       item.name.toLowerCase().includes('arv') ||
+       item.name.toLowerCase().includes('immunoglobulin') ||
+       item.name.toLowerCase().includes('vaccination')
+    );
+
+    if (hasRabies) {
+       // Parse Customer Name/ID from Billing Input
+       // Expected format: "Name" or "Name (PAT-123)"
+       let patientName = sale.customerName || 'Unknown';
+       let patientId = '';
+       
+       const idMatch = patientName.match(/\((PAT-[^)]+)\)/);
+       if (idMatch) {
+          patientId = idMatch[1];
+          patientName = patientName.split('(')[0].trim();
+       } else {
+          // Generate a temp ID if this is a walk-in without registration
+          const year = new Date().getFullYear();
+          const random = Math.floor(1000 + Math.random() * 9000); 
+          patientId = `PAT-${year}-${random}`;
+       }
+
+       // Ensure we have a valid organization ID
+       const orgId = sale.organizationId || 'MAIN';
+
+       // Use demographics if provided in the Sale object, otherwise default
+       // Default to 0/Unknown if undefined, but make sure we don't save undefined
+       const ageVal = sale.patientAge !== undefined ? sale.patientAge : 0;
+       const genderVal = sale.patientGender || 'Unknown';
+
+       const newRecord: ServiceRecord | any = {
+          id: crypto.randomUUID(),
+          patientId,
+          patientName,
+          age: ageVal, 
+          address: 'Update Address',
+          contactNo: '',
+          gender: genderVal,
+          ethnicity: 'Other',
+          serviceType: 'Anti Rabies Vaccine (ARV)', // Distinct name for the list
+          department: 'COMMUNICABLE', // CRITICAL: This puts it in the Rabies Queue
+          cost: sale.totalAmount,
+          timestamp: Date.now(),
+          status: 'PENDING',
+          queueNumber: Math.floor(Math.random() * 100),
+          organizationId: orgId,
+          // Explicitly set rabiesData to null so the filter works perfectly
+          rabiesData: null
+       };
+
+       const { error: recError } = await supabase.from(TABLE_RECORDS).insert(newRecord);
+       if (recError) console.error("Failed to auto-create rabies record", recError);
     }
   },
 
@@ -162,7 +225,8 @@ export const dbService = {
            accessGeneralTreatment: true, accessPathology: true, accessXRay: true, accessUSG: true, accessECG: true,
            accessDressing: true, accessMCH: true, accessImmunization: true, accessTB: true, accessNutrition: true,
            accessCBIMNCI: true, accessCommunicable: true, accessRabies: true, accessNonCommunicable: true,
-           viewFinancials: true, viewReports: true, manageSettings: true, manageUsers: true, aiAccess: true,
+           accessJinshi: true,
+           viewFinancials: true, viewReports: true, manageSettings: true, manageUsers: true,
            settings_General: true, settings_Rates: true, settings_Users: true, settings_Data: true
         },
         organizationId: 'MAIN'
@@ -240,7 +304,8 @@ export const dbService = {
          accessGeneralTreatment: true, accessPathology: true, accessXRay: true, accessUSG: true, accessECG: true,
          accessDressing: true, accessMCH: true, accessImmunization: true, accessTB: true, accessNutrition: true,
          accessCBIMNCI: true, accessCommunicable: true, accessRabies: true, accessNonCommunicable: true,
-         viewFinancials: role !== 'USER', viewReports: role !== 'USER', manageSettings: role === 'SUPER_ADMIN', manageUsers: role !== 'USER', aiAccess: true,
+         accessJinshi: true,
+         viewFinancials: role !== 'USER', viewReports: role !== 'USER', manageSettings: role === 'SUPER_ADMIN', manageUsers: role !== 'USER',
          settings_General: role === 'SUB_ADMIN', settings_Rates: role === 'SUB_ADMIN', settings_Users: role === 'SUB_ADMIN', settings_Data: false
      };
 
@@ -308,7 +373,6 @@ export const dbService = {
      if (error) {
         if (error.code === 'PGRST205' || error.code === '42P01' || error.message.includes('Could not find the table')) {
            console.warn(`Table ${TABLE_SERVICES} missing, attempting to seed.`);
-           // We can't insert if table is missing, so just return default list to UI
            return INITIAL_SERVICES;
         }
         throw new Error(error.message);

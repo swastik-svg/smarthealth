@@ -1,31 +1,24 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FlaskConical, Search, Save, X, Microscope, CheckCircle2 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { ServiceRecord, LabTest } from '../types';
 
-export const Pathology: React.FC = () => {
-  const [activeRecords, setActiveRecords] = useState<ServiceRecord[]>([]);
+interface PathologyProps {
+  serviceRecords: ServiceRecord[];
+}
+
+export const Pathology: React.FC<PathologyProps> = ({ serviceRecords }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<ServiceRecord | null>(null);
   const [testResults, setTestResults] = useState<{ [key: string]: string }>({});
 
-  useEffect(() => {
-    loadLabRequests();
-  }, []);
-
-  const loadLabRequests = async () => {
-    try {
-      const allRecords = await dbService.getAllServiceRecords();
+  const activeRecords = useMemo(() => {
       // Filter records that have lab requests where at least one is pending
-      const pendingLabRecords = allRecords.filter(r => 
+      return serviceRecords.filter(r => 
         r.labRequests && r.labRequests.length > 0 && r.labRequests.some(l => l.status === 'PENDING')
-      );
-      setActiveRecords(pendingLabRecords.sort((a, b) => b.timestamp - a.timestamp));
-    } catch (e) {
-      console.error("Failed to load lab requests", e);
-    }
-  };
+      ).sort((a, b) => b.timestamp - a.timestamp);
+  }, [serviceRecords]);
 
   const filteredRecords = activeRecords.filter(r => 
     r.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -59,9 +52,6 @@ export const Pathology: React.FC = () => {
 
      try {
         await dbService.updateLabResults(selectedRecord.id, updatedLabTests);
-        
-        // Refresh local list
-        await loadLabRequests();
         setSelectedRecord(null);
      } catch (e) {
         alert("नतिजा सुरक्षित गर्न असफल");

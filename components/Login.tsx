@@ -50,8 +50,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       console.error(err);
-      if (err.message && (err.message.includes("Database tables not found") || err.message.includes("Could not find the table"))) {
-          setError('Database Error: Tables are missing. Run the SQL script below in Supabase.');
+      if (err.message && (err.message.includes("Database tables not found") || err.message.includes("Could not find the table") || err.message.includes("Database Schema Mismatch"))) {
+          setError('Database Error: Tables or Columns are missing. Run the SQL script below in Supabase.');
           setShowSql(true);
       } else {
           setError('लगइन असफल भयो। कृपया पुन: प्रयास गर्नुहोस्।');
@@ -103,11 +103,17 @@ create table if not exists sales (
   "totalAmount" numeric,
   "customerName" text,
   "serviceId" text,
-  "organizationId" text
+  "organizationId" text,
+  "patientAge" numeric,
+  "patientGender" text
 );
 alter table sales enable row level security;
 drop policy if exists "Public Access Sales" on sales;
 create policy "Public Access Sales" on sales for all using (true);
+
+-- MIGRATION: Add new columns if missing
+alter table sales add column if not exists "patientAge" numeric;
+alter table sales add column if not exists "patientGender" text;
 
 -- 4. SERVICE RECORDS (Patients)
 create table if not exists "serviceRecords" (
@@ -140,6 +146,10 @@ alter table "serviceRecords" enable row level security;
 drop policy if exists "Public Access ServiceRecords" on "serviceRecords";
 create policy "Public Access ServiceRecords" on "serviceRecords" for all using (true);
 
+-- MIGRATION: Ensure columns exist
+alter table "serviceRecords" add column if not exists "rabiesData" jsonb;
+alter table "serviceRecords" add column if not exists "department" text;
+
 -- 5. SERVICES CATALOG
 create table if not exists services (
   id text primary key,
@@ -158,7 +168,10 @@ drop policy if exists "Public Access Services" on services;
 create policy "Public Access Services" on services for all using (true);
 
 -- 6. REALTIME
-alter publication supabase_realtime add table medicines, sales, users, "serviceRecords", services;`;
+alter publication supabase_realtime add table medicines, sales, users, "serviceRecords", services;
+
+-- 7. REFRESH SCHEMA
+notify pgrst, 'reload config';`;
      navigator.clipboard.writeText(sql);
      alert("SQL Copied! Please paste it in your Supabase SQL Editor and Click RUN.");
   };
@@ -187,25 +200,23 @@ alter publication supabase_realtime add table medicines, sales, users, "serviceR
                   <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-sm flex items-start gap-2">
                      <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
                      <div>
-                        <strong>Database Setup Required!</strong>
-                        <p className="mt-1 text-xs">The database tables are missing. Please copy the SQL code below and run it in your Supabase SQL Editor.</p>
+                        <strong>Database Update Required!</strong>
+                        <p className="mt-1 text-xs">Missing columns (patientAge/patientGender) detected. Copy & Run this SQL to fix:</p>
                      </div>
                   </div>
                   <div className="relative">
                      <div className="bg-slate-800 rounded-lg p-3 overflow-x-auto max-h-64 custom-scrollbar text-xs font-mono text-slate-300 border border-slate-700">
-                        <pre>{`-- 1. USERS TABLE
-create table if not exists users (
-  username text primary key,
-  ...
-);
--- (Copy full script to run)`}</pre>
+                        <pre>{`-- 3. SALES TABLE (Updates)
+alter table sales add column if not exists "patientAge" numeric;
+alter table sales add column if not exists "patientGender" text;
+... (Copy full script)`}</pre>
                      </div>
                      <button onClick={copySql} className="absolute top-2 right-2 bg-white text-slate-900 px-3 py-1.5 rounded text-xs font-bold shadow hover:bg-slate-100 flex items-center gap-1">
                         <Copy className="w-3 h-3" /> Copy Full SQL
                      </button>
                   </div>
                   <div className="text-[10px] text-slate-500 italic">
-                     Note: If you run this and still get errors, try reloading the "Schema Cache" in Supabase Settings.
+                     After running this in Supabase, click 'Back to Login' and try billing again.
                   </div>
                   <button onClick={() => setShowSql(false)} className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors">
                      Back to Login

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Package, ShoppingCart, Bot, Activity, LogOut, Settings, Stethoscope, FlaskConical, Menu, Building2, Check, ChevronDown, ChevronRight, Zap, HeartPulse, Cross, Users, Syringe, Baby, Apple, Thermometer, ShieldCheck, UserPlus, Receipt, FileBarChart, FileText } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Activity, LogOut, Settings, Stethoscope, FlaskConical, Menu, Building2, Check, ChevronDown, ChevronRight, Zap, HeartPulse, Cross, Users, Syringe, Baby, Apple, ShieldCheck, UserPlus, Receipt, FileBarChart, FileText, ClipboardList } from 'lucide-react';
 import { AppView, UserPermissions, UserRole } from '../types';
 
 interface LayoutProps {
@@ -82,6 +82,18 @@ export const Layout: React.FC<LayoutProps> = ({
     { view: AppView.POS, label: 'फार्मेसी बिक्री (POS)', icon: ShoppingCart, hidden: !permissions.posAccess },
     { view: AppView.SERVICE_BILLING, label: 'सेवा बिलिङ (Billing)', icon: Receipt, hidden: !permissions.posAccess },
     { 
+       view: AppView.JINSHI_PARENT, 
+       label: 'जिन्सी अभिलेख', 
+       icon: ClipboardList, 
+       hidden: !permissions.accessJinshi,
+       isParent: true,
+       children: [
+          { view: AppView.JINSHI_MAG_FARAM, label: 'माग फारम', icon: FileText },
+          { view: AppView.JINSHI_KHARID_ADESH, label: 'खरिद आदेश', icon: FileText },
+          { view: AppView.JINSHI_DAKHILA_PRATIBEDAN, label: 'दाखिला प्रतिवेदन (Entry Report)', icon: FileText },
+       ]
+    },
+    { 
        view: AppView.REPORT_PARENT, 
        label: 'रिपोर्टहरू (Reports)', 
        icon: FileBarChart,
@@ -99,7 +111,6 @@ export const Layout: React.FC<LayoutProps> = ({
           { view: AppView.REPORT_SERVICE_USER, label: 'सेवाग्राही प्रगति प्रतिवेदन', icon: FileText },
        ]
     },
-    { view: AppView.AI_ASSISTANT, label: 'AI सहायक', icon: Bot, hidden: !permissions.aiAccess },
     { view: AppView.SETTINGS, label: 'सेटिङ्स', icon: Settings, hidden: !permissions.manageSettings },
   ];
 
