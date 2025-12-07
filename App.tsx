@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -45,11 +46,32 @@ const App: React.FC = () => {
     patientRegister: false,
     doctorConsultation: false,
     viewPatientHistory: false,
-    labAccess: false,
+    
+    // Specific Department Access (Sub-menu level)
+    accessGeneralTreatment: false,
+    accessPathology: false,
+    accessXRay: false,
+    accessUSG: false,
+    accessECG: false,
+    accessDressing: false,
+    accessMCH: false,
+    accessImmunization: false,
+    accessTB: false,
+    accessNutrition: false,
+    accessCBIMNCI: false,
+    accessCommunicable: false,
+    accessRabies: false,
+    accessNonCommunicable: false,
+
     viewFinancials: false,
     manageSettings: false,
     manageUsers: false,
-    aiAccess: false
+    aiAccess: false,
+
+    settings_General: false,
+    settings_Rates: false,
+    settings_Users: false,
+    settings_Data: false
   });
 
   // Load Data from IndexedDB on Startup and Check Auth
@@ -368,7 +390,7 @@ const App: React.FC = () => {
         // Note: We use the dedicated Pathology component for the Lab Dashboard.
         // If users want to Register patients for Lab, they can use the "Lab Request" feature inside General Treatment 
         // or we could add a specific registration view here. For now, sticking to the Dashboard view requested earlier.
-        if (!permissions.labAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+        if (!permissions.accessPathology) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
         return <Pathology />;
 
       case AppView.INVENTORY:
@@ -399,7 +421,7 @@ const App: React.FC = () => {
         return <AIAssistant inventory={filteredInventory} />;
       case AppView.SETTINGS:
         if (!permissions.manageSettings) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <Settings inventory={filteredInventory} sales={filteredSales} currentUser={currentUser} />;
+        return <Settings inventory={filteredInventory} sales={filteredSales} currentUser={currentUser} permissions={permissions} />;
       default:
         return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
     }

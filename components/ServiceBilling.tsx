@@ -1,79 +1,14 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Minus, Trash, Receipt, CheckCircle, Lock, Import, User, FileText, Pill, Activity, X, FlaskConical, Printer, ArrowRight, ScanLine, Grid, ListFilter, History } from 'lucide-react';
-import { CartItem, Sale, ServiceRecord } from '../types';
+import { Search, Plus, Minus, Trash, Receipt, CheckCircle, Lock, Import, User, FileText, Pill, Activity, X, FlaskConical, Printer, ArrowRight, ScanLine, ListFilter, History } from 'lucide-react';
+import { CartItem, Sale, ServiceRecord, ServiceCatalogItem, AppView } from '../types';
 import { dbService } from '../services/db';
 
 interface ServiceBillingProps {
-  onProcessBilling: (sale: Sale) => void;
+  onProcessBilling: (sale: Sale) => Promise<void>;
   activeOrgId?: string;
 }
-
-// Predefined Service Catalog for Manual Billing
-const BILLING_CATALOG = {
-   'GENERAL': [
-      { name: 'OPD Ticket (New)', price: 50 },
-      { name: 'OPD Ticket (Follow-up)', price: 30 },
-      { name: 'Emergency Ticket', price: 100 },
-      { name: 'Health Card', price: 20 },
-      { name: 'Medical Certificate', price: 500 },
-   ],
-   'LAB': [
-      { name: 'CBC (Complete Blood Count)', price: 400 },
-      { name: 'Blood Grouping', price: 100 },
-      { name: 'Blood Sugar (F/PP/R)', price: 100 },
-      { name: 'Urine R/E', price: 150 },
-      { name: 'Stool R/E', price: 150 },
-      { name: 'Lipid Profile', price: 800 },
-      { name: 'Liver Function Test (LFT)', price: 900 },
-      { name: 'Kidney Function Test (RFT)', price: 800 },
-      { name: 'Thyroid Profile (T3/T4/TSH)', price: 1200 },
-      { name: 'Uric Acid', price: 250 },
-      { name: 'Widal Test', price: 300 },
-      { name: 'HBsAg', price: 400 },
-      { name: 'HIV I/II', price: 450 },
-      { name: 'HCV', price: 450 },
-      { name: 'VDRL', price: 200 },
-      { name: 'Mantoux Test', price: 200 },
-      { name: 'Sputum AFB', price: 150 },
-      { name: 'Semen Analysis', price: 400 },
-      { name: 'Urine Culture', price: 800 },
-      { name: 'Blood Culture', price: 1000 },
-      { name: 'CRP (Quantitative)', price: 400 },
-      { name: 'HbA1c', price: 700 },
-      { name: 'Vitamin D', price: 2500 },
-      { name: 'Vitamin B12', price: 1500 },
-      { name: 'Dengue Ag/Ab', price: 1000 },
-      { name: 'Scrub Typhus', price: 1000 },
-   ],
-   'X-RAY/USG': [
-      { name: 'Chest X-Ray', price: 350 },
-      { name: 'X-Ray Limbs', price: 300 },
-      { name: 'X-Ray Spine', price: 450 },
-      { name: 'X-Ray Skull', price: 400 },
-      { name: 'X-Ray Abdomen (Erect/Supine)', price: 400 },
-      { name: 'USG Abdomen', price: 600 },
-      { name: 'USG Pelvis', price: 550 },
-      { name: 'USG OBS (Pregnancy)', price: 600 },
-      { name: 'USG Breast', price: 700 },
-      { name: 'USG Thyroid/Neck', price: 700 },
-      { name: 'USG Scrotum', price: 600 },
-      { name: 'ECG', price: 250 },
-      { name: 'Echocardiography', price: 1500 },
-   ],
-   'HOSPITAL': [
-      { name: 'Bed Charge (General)', price: 200 },
-      { name: 'Bed Charge (Cabin)', price: 1000 },
-      { name: 'Oxygen Charge (Per Hour)', price: 100 },
-      { name: 'Nebulization', price: 150 },
-      { name: 'Dressing (Small)', price: 100 },
-      { name: 'Dressing (Medium)', price: 150 },
-      { name: 'Dressing (Large)', price: 250 },
-      { name: 'Stitch Removal', price: 150 },
-      { name: 'Catheterization', price: 300 },
-      { name: 'Ambulance Service', price: 1000 },
-   ]
-};
 
 export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling, activeOrgId }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,15 +37,19 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
 
   // Manual Modal State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<keyof typeof BILLING_CATALOG>('GENERAL');
+  const [activeCategory, setActiveCategory] = useState<string>('GENERAL_TREATMENT');
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
   const [manualItemName, setManualItemName] = useState('');
   const [manualItemPrice, setManualItemPrice] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // DB Catalog State
+  const [billingCatalog, setBillingCatalog] = useState<ServiceCatalogItem[]>([]);
+
   useEffect(() => {
      loadData();
-  }, [activeOrgId, success]); // Reload when org changes or after a successful bill
+     loadCatalog();
+  }, [activeOrgId, success]); 
 
   // Focus search input when modal or category changes
   useEffect(() => {
@@ -134,7 +73,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
            orgSales = allSales.filter(s => s.organizationId === activeOrgId);
         }
 
-        // 1. Pending Orders (for the left list) - Clinically completed but unbilled
+        // 1. Pending Orders
         const pending = orgRecords.filter(r => 
            r.status === 'COMPLETED' && (
               (r.serviceRequests && r.serviceRequests.some(req => req.status === 'PENDING')) ||
@@ -144,8 +83,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         );
         setPendingOrders(pending.sort((a,b) => b.timestamp - a.timestamp));
 
-        // 2. All Unique Patients (for Search Autocomplete)
-        // Group by PatientID and keep the latest record to represent the patient
+        // 2. All Unique Patients
         const uniquePatientsMap = new Map<string, ServiceRecord>();
         orgRecords.forEach(r => {
            const existing = uniquePatientsMap.get(r.patientId);
@@ -155,13 +93,36 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         });
         setAllPatients(Array.from(uniquePatientsMap.values()));
 
-        // 3. Recent Sales (Top 10)
+        // 3. Recent Sales
         setRecentSales(orgSales.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10));
 
      } catch (e) {
         console.error("Failed to load billing data", e);
      }
   };
+
+  const loadCatalog = async () => {
+     try {
+        const services = await dbService.getAllServices();
+        setBillingCatalog(services);
+     } catch (e) {
+        console.error("Failed to load catalog");
+     }
+  };
+
+  // Group services for the tab view
+  const categories = ['GENERAL_TREATMENT', 'LAB', 'X_RAY', 'USG', 'HOSPITAL'];
+  const categoryLabels: Record<string, string> = {
+     'GENERAL_TREATMENT': 'GENERAL',
+     'LAB': 'LAB',
+     'X_RAY': 'X-RAY',
+     'USG': 'USG',
+     'HOSPITAL': 'HOSPITAL'
+  };
+
+  const filteredCatalogItems = billingCatalog.filter(
+     item => item.category === activeCategory && item.name.toLowerCase().includes(serviceSearchTerm.toLowerCase())
+  );
 
   const filteredOrders = pendingOrders.filter(order => 
     order.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -171,7 +132,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
   const importPendingRequest = (record: ServiceRecord) => {
      const newCartItems: CartItem[] = [];
 
-     // 1. Import Service Requests (X-Ray, USG, etc.)
+     // 1. Import Service Requests
      if (record.serviceRequests) {
         const pendingServices = record.serviceRequests.filter(req => req.status === 'PENDING');
         pendingServices.forEach(req => {
@@ -191,7 +152,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         });
      }
 
-     // 2. Import Prescriptions (Medicines)
+     // 2. Import Prescriptions
      if (record.prescription && record.prescriptionStatus === 'PENDING') {
         record.prescription.forEach(med => {
            newCartItems.push({
@@ -267,16 +228,14 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
      const pendingRecord = pendingOrders.find(p => p.patientId === record.patientId);
      
      if (pendingRecord) {
-        // Use existing flow for pending items
         importPendingRequest(pendingRecord);
      } else {
-        // No pending items: Open Manual Billing Modal for this patient
         setCustomerName(record.patientName + ` (${record.patientId})`);
         setManualSearchId('');
         setShowSuggestions(false);
-        setCart([]); // Clear cart
+        setCart([]); 
         setImportedRecordId(null);
-        setIsManualModalOpen(true); // OPEN MODAL
+        setIsManualModalOpen(true); 
      }
   };
 
@@ -295,7 +254,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
         organizationId: activeOrgId
      };
      setCart(prev => [...prev, newItem]);
-     setServiceSearchTerm(''); // Clear search after adding
+     setServiceSearchTerm('');
      if (searchInputRef.current) searchInputRef.current.focus();
   };
 
@@ -346,7 +305,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
       organizationId: activeOrgId
     };
 
-    onProcessBilling(sale);
+    await onProcessBilling(sale);
 
     if (importedRecordId) {
        const processedIds = cart.map(c => c.id);
@@ -355,18 +314,18 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
        if (processedIds.length > 0 || billingMeds) {
           await dbService.markRequestsAsBilled(importedRecordId, processedIds, billingMeds);
        }
-       await loadData(); 
     }
+    
+    await loadData();
 
     setSuccess(true);
     setLastSale(sale);
     setShowPrintModal(true);
     
-    // Reset States
     setCart([]);
     setCustomerName('');
     setImportedRecordId(null);
-    setIsManualModalOpen(false); // Close modal if open
+    setIsManualModalOpen(false); 
     
     setTimeout(() => setSuccess(false), 3000);
   };
@@ -457,10 +416,10 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
   const isBillingDisabled = activeOrgId === 'ALL';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] gap-4 pb-4">
+    <div className="flex flex-col lg:h-[calc(100vh-8rem)] h-auto gap-4 pb-4">
       
-      {/* TOP SEARCH BAR: Manual Patient Search */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between z-20 shrink-0">
+      {/* TOP SEARCH BAR */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between z-20 shrink-0 sticky top-0 md:static">
           <div className="flex items-center gap-2">
              <div className="bg-blue-600 p-2 rounded-lg text-white">
                 <ScanLine className="w-5 h-5" />
@@ -482,7 +441,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                   className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
                 
-                {/* Search Suggestions Dropdown */}
+                {/* Suggestions */}
                 {showSuggestions && suggestions.length > 0 && (
                    <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl mt-1 max-h-60 overflow-y-auto overflow-hidden z-50">
                       {suggestions.map((s) => (
@@ -505,9 +464,8 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden min-h-0">
-      
-         {/* LEFT COLUMN: Patient Queue (Pending Requests) */}
-         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-0">
+         {/* LEFT COLUMN: Pending Requests */}
+         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-[500px] lg:min-h-0">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 shrink-0">
                   <div>
@@ -606,7 +564,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
          </div>
 
          {/* RIGHT COLUMN: Invoice / Cart */}
-         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-0">
+         <div className="w-full lg:w-1/2 flex flex-col gap-4 min-h-[500px] lg:min-h-0">
              <div className="bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full z-10 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex items-center justify-between shrink-0">
                    <div className="flex items-center gap-2">
@@ -697,7 +655,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                       type="text" 
                       className="w-full p-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
                       value={customerName}
-                      readOnly={!!importedRecordId} // Read only if imported
+                      readOnly={!!importedRecordId}
                       onChange={(e) => setCustomerName(e.target.value)}
                       disabled={isBillingDisabled}
                       placeholder="म्यानुअल बिलको लागि नाम लेख्नुहोस्"
@@ -736,14 +694,14 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
       </div>
 
       {/* RECENT TRANSACTIONS TABLE */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden shrink-0 mb-6 lg:mb-0">
           <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-wide">
                   <History className="w-4 h-4 text-slate-500" /> भर्खरका कारोबारहरू (Recent Bills)
               </h3>
           </div>
           <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
+              <table className="w-full text-left text-sm min-w-[600px]">
                   <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                           <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Date</th>
@@ -790,18 +748,18 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
           </div>
       </div>
       
-      {/* MANUAL BILLING MODAL (Service Picker - UPDATED WITH SEARCHABLE LIST) */}
+      {/* MANUAL BILLING MODAL (Service Picker) */}
       {isManualModalOpen && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="bg-white rounded-2xl w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh] h-full md:h-auto">
                {/* Modal Header */}
-               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-3">
                      <div className="bg-blue-600 p-2 rounded-lg text-white">
                         <ScanLine className="w-6 h-6" />
                      </div>
                      <div>
-                        <h3 className="text-xl font-bold text-slate-800">नयाँ बिलिङ (New Bill)</h3>
+                        <h3 className="text-lg md:text-xl font-bold text-slate-800">नयाँ बिलिङ (New Bill)</h3>
                         <p className="text-sm text-slate-500">{customerName}</p>
                      </div>
                   </div>
@@ -810,23 +768,23 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                   </button>
                </div>
 
-               <div className="flex flex-1 overflow-hidden">
+               <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
                   
                   {/* Left: Service Catalog */}
-                  <div className="w-7/12 border-r border-slate-200 flex flex-col bg-slate-50">
+                  <div className="w-full md:w-7/12 border-r border-slate-200 flex flex-col bg-slate-50 h-1/2 md:h-auto">
                      {/* Tabs */}
-                     <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10">
-                        {Object.keys(BILLING_CATALOG).map(cat => (
+                     <div className="flex border-b border-slate-200 bg-white sticky top-0 z-10 overflow-x-auto">
+                        {categories.map(cat => (
                            <button 
                               key={cat}
-                              onClick={() => { setActiveCategory(cat as any); setServiceSearchTerm(''); }}
-                              className={`flex-1 py-3 text-xs md:text-sm font-bold uppercase tracking-wider transition-colors ${
+                              onClick={() => { setActiveCategory(cat); setServiceSearchTerm(''); }}
+                              className={`flex-1 py-3 px-2 text-xs md:text-sm font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
                                  activeCategory === cat 
                                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50/50' 
                                  : 'text-slate-500 hover:bg-slate-50'
                               }`}
                            >
-                              {cat}
+                              {categoryLabels[cat]}
                            </button>
                         ))}
                      </div>
@@ -838,7 +796,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                             <input 
                                 ref={searchInputRef}
                                 type="text"
-                                placeholder={`Search in ${activeCategory}...`}
+                                placeholder={`Search in ${categoryLabels[activeCategory]}...`}
                                 className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 value={serviceSearchTerm}
                                 onChange={(e) => setServiceSearchTerm(e.target.value)}
@@ -854,12 +812,10 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                         </div>
                      </div>
                      
-                     {/* Service Items List (Searchable Listbox) */}
+                     {/* Service Items List */}
                      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
                         <div className="space-y-1">
-                           {BILLING_CATALOG[activeCategory]
-                             .filter(item => item.name.toLowerCase().includes(serviceSearchTerm.toLowerCase()))
-                             .map((item, idx) => (
+                           {filteredCatalogItems.map((item, idx) => (
                               <button 
                                  key={idx}
                                  onClick={() => addCatalogItem(item.name, item.price, activeCategory)}
@@ -882,7 +838,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                            ))}
                            
                            {/* Empty State */}
-                           {BILLING_CATALOG[activeCategory].filter(item => item.name.toLowerCase().includes(serviceSearchTerm.toLowerCase())).length === 0 && (
+                           {filteredCatalogItems.length === 0 && (
                                 <div className="text-center py-10 text-slate-400">
                                     <ListFilter className="w-8 h-8 mx-auto mb-2 opacity-30" />
                                     <p className="text-sm">No services found for "{serviceSearchTerm}"</p>
@@ -892,7 +848,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                      </div>
                      
                      {/* Manual Entry Footer */}
-                     <div className="p-4 border-t border-slate-200 bg-white">
+                     <div className="p-4 border-t border-slate-200 bg-white hidden md:block">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">म्यानुअल थप्नुहोस् (Custom Item)</div>
                         <div className="flex gap-2">
                             <input 
@@ -921,8 +877,8 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                   </div>
 
                   {/* Right: Modal Invoice Preview */}
-                  <div className="w-5/12 flex flex-col bg-white">
-                     <div className="p-4 bg-slate-50 border-b border-slate-200">
+                  <div className="w-full md:w-5/12 flex flex-col bg-white h-1/2 md:h-auto border-t md:border-t-0 border-slate-200">
+                     <div className="p-4 bg-slate-50 border-b border-slate-200 shrink-0">
                         <h4 className="font-bold text-slate-700 flex items-center gap-2">
                            <Receipt className="w-4 h-4" /> छनोट गरिएका सेवाहरू (Selected)
                         </h4>
@@ -965,7 +921,7 @@ export const ServiceBilling: React.FC<ServiceBillingProps> = ({ onProcessBilling
                      </div>
                      
                      {/* Modal Footer Actions */}
-                     <div className="p-6 border-t border-slate-200 bg-slate-50">
+                     <div className="p-4 md:p-6 border-t border-slate-200 bg-slate-50 shrink-0">
                         <div className="flex justify-between items-center mb-4">
                            <span className="text-slate-600 font-medium">Total Payable</span>
                            <span className="text-2xl font-bold text-teal-700">Rs. {totalAmount.toFixed(2)}</span>

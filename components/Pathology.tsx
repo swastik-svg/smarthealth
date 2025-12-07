@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { FlaskConical, Search, Clock, CheckCircle2, Save, X, Microscope } from 'lucide-react';
+import { FlaskConical, Search, Save, X, Microscope, CheckCircle2 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { ServiceRecord, LabTest } from '../types';
 

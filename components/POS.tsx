@@ -75,10 +75,10 @@ export const POS: React.FC<POSProps> = ({ inventory, onProcessSale, activeOrgId 
   const isSaleDisabled = activeOrgId === 'ALL';
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-8rem)] gap-6">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-8rem)] h-auto gap-6 pb-20 lg:pb-0">
       {/* Product List */}
       <div className="flex-1 flex flex-col gap-4">
-        <div className="relative">
+        <div className="relative sticky top-0 z-10 lg:static">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
             type="text"
@@ -89,7 +89,7 @@ export const POS: React.FC<POSProps> = ({ inventory, onProcessSale, activeOrgId 
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div className="flex-1 overflow-y-auto bg-white rounded-2xl shadow-sm border border-slate-100 p-4 min-h-[400px]">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredInventory.map(item => (
               <button 
@@ -116,8 +116,8 @@ export const POS: React.FC<POSProps> = ({ inventory, onProcessSale, activeOrgId 
       </div>
 
       {/* Cart / Checkout */}
-      <div className="w-full lg:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full z-10">
-        <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex items-center justify-between">
+      <div className="w-full lg:w-96 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col z-20 h-auto lg:h-full">
+        <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-slate-600" />
             <h3 className="font-bold text-slate-800">हालको बिक्री (Current Sale)</h3>
@@ -129,7 +129,7 @@ export const POS: React.FC<POSProps> = ({ inventory, onProcessSale, activeOrgId 
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] lg:min-h-0">
           {cart.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
               <ShoppingCart className="w-12 h-12 opacity-20" />
@@ -153,7 +153,7 @@ export const POS: React.FC<POSProps> = ({ inventory, onProcessSale, activeOrgId 
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-200 rounded-b-2xl space-y-4">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 rounded-b-2xl space-y-4 shrink-0">
           <input 
             type="text" 
             placeholder="ग्राहकको नाम (ऐच्छिक)" 

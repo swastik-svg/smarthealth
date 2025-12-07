@@ -1,5 +1,4 @@
 
-
 export interface Medicine {
   id: string;
   name: string;
@@ -64,6 +63,7 @@ export enum AppView {
   SERVICE_BILLING = 'SERVICE_BILLING', // Hospital Service Billing
   AI_ASSISTANT = 'AI_ASSISTANT',
   SETTINGS = 'SETTINGS',
+  RATE_UPDATE = 'RATE_UPDATE', // Virtual
 }
 
 export type NotificationType = 'success' | 'error' | 'info';
@@ -84,20 +84,39 @@ export interface UserPermissions {
   // POS
   posAccess: boolean;
 
-  // Clinic / Services
-  clinicAccess: boolean; // View the module
-  patientRegister: boolean;
+  // Clinic / Services (Granular Access)
+  clinicAccess: boolean; // Legacy/Global toggle
+  patientRegister: boolean; // Access to "Sewagrahi Muldarta"
   doctorConsultation: boolean; // Access to consultation modal
   viewPatientHistory: boolean;
 
-  // Lab
-  labAccess: boolean;
+  // Specific Department Access (Sub-menu level)
+  accessGeneralTreatment: boolean;
+  accessPathology: boolean; // Lab Dashboard
+  accessXRay: boolean;
+  accessUSG: boolean;
+  accessECG: boolean;
+  accessDressing: boolean;
+  accessMCH: boolean;
+  accessImmunization: boolean;
+  accessTB: boolean;
+  accessNutrition: boolean;
+  accessCBIMNCI: boolean;
+  accessCommunicable: boolean;
+  accessRabies: boolean;
+  accessNonCommunicable: boolean;
 
   // Admin / System
   viewFinancials: boolean; // Dashboard stats & reports
-  manageSettings: boolean;
+  manageSettings: boolean; // Gatekeeper for the Settings Page
   manageUsers: boolean;
   aiAccess: boolean;
+
+  // Granular Settings Access
+  settings_General: boolean; // Store Profile
+  settings_Rates: boolean;   // Rate & Service Setup
+  settings_Users: boolean;   // User Tab
+  settings_Data: boolean;    // Backup Tab
 }
 
 export enum UserRole {
@@ -113,6 +132,9 @@ export interface User {
   permissions: UserPermissions;
   role: UserRole;
   organizationId?: string; // Links sub-admins and users to a specific group
+  fullName?: string;
+  designation?: string;
+  phoneNumber?: string;
 }
 
 export type ServiceStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED';
@@ -145,6 +167,35 @@ export interface ServiceItemRequest {
   status: 'PENDING' | 'BILLED';
 }
 
+export interface RabiesSchedule {
+  day0: string | null; // BS Date String (YYYY-MM-DD)
+  day3: string | null;
+  day7: string | null;
+  day14: string | null;
+  day28: string | null;
+  
+  // Status flags to track if vaccine was actually given
+  day0Given?: boolean;
+  day3Given?: boolean;
+  day7Given?: boolean;
+  day14Given?: boolean;
+  day28Given?: boolean;
+}
+
+export interface RabiesData {
+  previousRecord: string; // Yes/No or details
+  dateOfBite: string; // BS Date String
+  animalType: string; // Dog, Cat, Monkey
+  biteSite: string; // Leg, Hand
+  exposureNature: string; // Scratch, Bite, Lick
+  skinBroken: boolean;
+  woundBleeding: boolean;
+  whoCategory: 'I' | 'II' | 'III';
+  humanRabiesCase: boolean;
+  schedule: RabiesSchedule;
+  registeredMonth?: string; // Renamed from nextVisitMonth
+}
+
 export interface ServiceRecord {
   id: string;        // Unique internal ID
   patientId: string; // Readable Unique Patient ID (e.g. PAT-2024-001)
@@ -169,4 +220,31 @@ export interface ServiceRecord {
   totalBill?: number;  // Service Fee + Medicine Cost
   organizationId?: string;
   medicineRequests?: PrescriptionItem[]; // Can be same as prescription
+  
+  // Specific Data for Rabies
+  rabiesData?: RabiesData;
+}
+
+// Sub-test structure for Lab Profiles (e.g. LFT -> SGOT, SGPT)
+export interface SubTest {
+  id: string;
+  name: string;
+  unit?: string;
+  range?: string;
+}
+
+// New Interface for Rate Management
+export interface ServiceCatalogItem {
+  id: string;
+  name: string;
+  category: string; // e.g., 'GENERAL', 'LAB', 'X-RAY'
+  price: number;
+  description?: string;
+  duration?: string;
+  isSystem?: boolean; // If true, maybe prevent deletion
+  
+  // Lab Specific Configuration
+  unit?: string;       // e.g. "mg/dL"
+  range?: string;      // e.g. "70-110"
+  subTests?: SubTest[]; // For profiles like LFT
 }

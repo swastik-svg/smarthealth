@@ -90,28 +90,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ inventory, sales, permissi
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div 
           onClick={() => setActiveModal('sales')}
-          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-green-200 transition-all cursor-pointer hover:shadow-md"
+          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-green-200 transition-all cursor-pointer hover:shadow-md min-w-0"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-slate-500">कुल आम्दानी (Revenue)</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">रु. {stats.revenue.toLocaleString()}</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1 truncate">रु. {stats.revenue.toLocaleString()}</h3>
             <p className="text-xs text-green-600 mt-1 font-medium">रिपोर्ट हेर्न क्लिक गर्नुहोस्</p>
           </div>
-          <div className="h-12 w-12 bg-green-50 rounded-xl flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+          <div className="h-12 w-12 bg-green-50 rounded-xl flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform shrink-0">
             <DollarSign className="w-6 h-6" />
           </div>
         </div>
 
         <div 
           onClick={() => setActiveModal('sales')}
-          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-blue-200 transition-all cursor-pointer hover:shadow-md"
+          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-blue-200 transition-all cursor-pointer hover:shadow-md min-w-0"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-slate-500">बिक्री संख्या (Sales Count)</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">{stats.salesCount}</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1 truncate">{stats.salesCount}</h3>
             <p className="text-xs text-blue-600 mt-1 font-medium">इतिहास हेर्न क्लिक गर्नुहोस्</p>
           </div>
-          <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+          <div className="h-12 w-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform shrink-0">
             <TrendingUp className="w-6 h-6" />
           </div>
         </div>
@@ -119,14 +119,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ inventory, sales, permissi
         {/* Clickable Low Stock Card */}
         <div 
           onClick={() => setActiveModal('lowStock')}
-          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-amber-200 transition-all cursor-pointer hover:shadow-md"
+          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-amber-200 transition-all cursor-pointer hover:shadow-md min-w-0"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-slate-500">न्यून मौज्दात (Low Stock)</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">{stats.lowStock}</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1 truncate">{stats.lowStock}</h3>
             <p className="text-xs text-amber-600 mt-1 font-medium">विवरण हेर्न क्लिक गर्नुहोस्</p>
           </div>
-          <div className="h-12 w-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
+          <div className="h-12 w-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform shrink-0">
             <PackageCheck className="w-6 h-6" />
           </div>
         </div>
@@ -134,14 +134,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ inventory, sales, permissi
         {/* Clickable Expired Card */}
         <div 
           onClick={() => setActiveModal('expired')}
-          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-red-200 transition-all cursor-pointer hover:shadow-md"
+          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between group hover:border-red-200 transition-all cursor-pointer hover:shadow-md min-w-0"
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-slate-500">म्याद सकिएको / जोखिमपूर्ण</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">{stats.expired}</h3>
+            <h3 className="text-2xl font-bold text-slate-800 mt-1 truncate">{stats.expired}</h3>
             <p className="text-xs text-red-600 mt-1 font-medium">विवरण हेर्न क्लिक गर्नुहोस्</p>
           </div>
-          <div className="h-12 w-12 bg-red-50 rounded-xl flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform">
+          <div className="h-12 w-12 bg-red-50 rounded-xl flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform shrink-0">
             <AlertTriangle className="w-6 h-6" />
           </div>
         </div>
@@ -149,9 +149,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ inventory, sales, permissi
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-w-0">
           <h3 className="text-lg font-semibold text-slate-800 mb-6">आम्दानी प्रवृत्ति (पछिल्लो ७ दिन)</h3>
-          <div className="h-80">
+          <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -167,9 +167,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ inventory, sales, permissi
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 min-w-0">
           <h3 className="text-lg font-semibold text-slate-800 mb-6">बिक्री मात्रा</h3>
-          <div className="h-80">
+          <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
