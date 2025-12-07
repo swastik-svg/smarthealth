@@ -73,11 +73,26 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
 
   const filteredRecords = useMemo(() => {
      if (!selectedMonth) return [];
-     // Filter by "Registered Month" stored in rabiesData
+     
      return records.filter(r => {
+        // 1. Priority: Explicitly registered month
         if (r.rabiesData?.registeredMonth) {
            return r.rabiesData.registeredMonth === selectedMonth;
         }
+        
+        // 2. Fallback: Parse 'dateOfBite' (e.g., 2081-11-05) if month is missing
+        // This fixes the issue where old records disappear
+        if (r.rabiesData?.dateOfBite) {
+           const parts = r.rabiesData.dateOfBite.split(/[-/.]/);
+           if (parts.length >= 2) {
+              const monthNum = parseInt(parts[1]); // e.g. 11
+              if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+                 const monthName = nepaliMonths[monthNum - 1]; // Index 10 is Falgun
+                 return monthName === selectedMonth;
+              }
+           }
+        }
+        
         return false; 
      });
   }, [records, selectedMonth]);
@@ -102,7 +117,7 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
 
      filteredRecords.forEach(r => {
         const age = r.age || 0;
-        const gender = (r.gender || '').toLowerCase(); // Normalize
+        const gender = (r.gender || '').toLowerCase().trim(); // Normalize
         const animal = r.rabiesData?.animalType || 'Other';
         
         let rowKey = '';

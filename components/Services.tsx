@@ -1,39 +1,36 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Stethoscope, Activity, Heart, Thermometer, Syringe, Clock, UserPlus, X, History, Search, CheckCircle2, ListOrdered, FileText, ChevronRight, FileClock, Pill, Trash2, AlertCircle, Calculator, User, FlaskConical, ClipboardList, Printer, ShieldCheck, HeartPulse, Cross, PlusCircle, Zap, Plus, Save, Calendar, PawPrint } from 'lucide-react';
+import { 
+  Search, Plus, UserPlus, Clock, CheckCircle2, ChevronRight, History, 
+  FileText, Activity, Save, X, Stethoscope, Zap, HeartPulse, Cross, 
+  Syringe, PawPrint, AlertCircle, Calendar, Printer, ClipboardList
+} from 'lucide-react';
 import { dbService } from '../services/db';
-import { ServiceRecord, ServiceStatus, Medicine, PrescriptionItem, Sale, LabTest, UserPermissions, AppView, ServiceItemRequest, ServiceCatalogItem, RabiesData } from '../types';
-import { addDaysToBS } from '../services/dateUtils';
+import { addDaysToBS, getCurrentDateBS } from '../services/dateUtils';
+import { 
+  Medicine, ServiceRecord, UserPermissions, AppView, ServiceStatus, 
+  PrescriptionItem, LabTest, ServiceItemRequest, RabiesData, Sale, ServiceCatalogItem 
+} from '../types';
 
 interface ServicesProps {
-  inventory?: Medicine[];
-  onServiceComplete?: (inventory: Medicine[], sale: Sale) => void;
+  inventory: Medicine[];
+  onServiceComplete?: (updatedInventory: Medicine[], newSale: Sale) => void;
   permissions: UserPermissions;
   activeOrgId?: string;
-  department?: string; // e.g. "X_RAY"
-  title?: string;      // e.g. "X-Ray Services"
-  autoOpenRegistration?: boolean; // Prop to auto-open modal
-  preSelectedService?: string; // Force a specific service type (e.g. "Rabies Vaccine")
+  department: string;
+  title: string;
+  autoOpenRegistration?: boolean;
+  preSelectedService?: string;
 }
 
 export const Services: React.FC<ServicesProps> = ({ 
-   inventory = [], 
-   onServiceComplete, 
-   permissions, 
-   activeOrgId,
-   department = AppView.GENERAL_TREATMENT,
-   title = "General Services",
-   autoOpenRegistration = false,
-   preSelectedService
+  inventory, onServiceComplete, permissions, activeOrgId, department, title, autoOpenRegistration, preSelectedService 
 }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeConsultation, setActiveConsultation] = useState<ServiceRecord | null>(null);
-  const [selectedHistory, setSelectedHistory] = useState<ServiceRecord | null>(null);
   const [records, setRecords] = useState<ServiceRecord[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [historySearchTerm, setHistorySearchTerm] = useState('');
   
-  // Rate Catalog State
+  // Service Catalog
   const [servicesCatalog, setServicesCatalog] = useState<ServiceCatalogItem[]>([]);
 
   // Registration Form State
@@ -47,35 +44,42 @@ export const Services: React.FC<ServicesProps> = ({
     ethnicity: '1 - Dalit',
     serviceType: '',
     cost: 0,
-    department: department // Track which department the service belongs to
+    department: ''
   });
 
   // Consultation State
+  const [activeConsultation, setActiveConsultation] = useState<ServiceRecord | null>(null);
   const [findings, setFindings] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
-  const [prescriptionList, setPrescriptionList] = useState<PrescriptionItem[]>([]);
-  const [labRequestList, setLabRequestList] = useState<LabTest[]>([]);
-  const [newLabTestName, setNewLabTestName] = useState('');
-  const [showLabSuggestions, setShowLabSuggestions] = useState(false);
   
-  // Service Request State
-  const [serviceRequestList, setServiceRequestList] = useState<ServiceItemRequest[]>([]);
-  const [requestCategory, setRequestCategory] = useState(AppView.X_RAY);
-  const [selectedRequestItem, setSelectedRequestItem] = useState('');
-
-  // Prescription Builder State
+  // Prescription State
+  const [prescriptionList, setPrescriptionList] = useState<PrescriptionItem[]>([]);
   const [medSearch, setMedSearch] = useState('');
   const [selectedMed, setSelectedMed] = useState<Medicine | null>(null);
   const [dose, setDose] = useState('');
-  const [freq, setFreq] = useState('1-0-0'); 
+  const [freq, setFreq] = useState('1-0-1');
   const [duration, setDuration] = useState('');
-  const [qty, setQty] = useState(1);
+  const [qty, setQty] = useState(0);
+
+  // Lab Request State
+  const [labRequestList, setLabRequestList] = useState<LabTest[]>([]);
+  const [newLabTestName, setNewLabTestName] = useState('');
+  const [showLabSuggestions, setShowLabSuggestions] = useState(false);
+
+  // Service Request State
+  const [serviceRequestList, setServiceRequestList] = useState<ServiceItemRequest[]>([]);
+  const [requestCategory, setRequestCategory] = useState<string>('X_RAY');
+  const [selectedRequestItem, setSelectedRequestItem] = useState('');
+
+  // History State
+  const [selectedHistory, setSelectedHistory] = useState<ServiceRecord | null>(null);
 
   // RABIES FORM STATE
   const [isRabiesModalOpen, setIsRabiesModalOpen] = useState(false);
+  const [tempDemographics, setTempDemographics] = useState({ age: '', gender: '' });
   const [rabiesFormData, setRabiesFormData] = useState<RabiesData>({
       previousRecord: 'No',
-      dateOfBite: '2081-01-01', // Default BS
+      dateOfBite: '2081-01-01',
       animalType: 'Dog',
       biteSite: 'Leg',
       exposureNature: 'Bite',
@@ -87,24 +91,23 @@ export const Services: React.FC<ServicesProps> = ({
          day0: '2081-01-01', day3: null, day7: null, day14: null, day28: null,
          day0Given: false, day3Given: false, day7Given: false, day14Given: false, day28Given: false
       },
-      registeredMonth: '' // Renamed from nextVisitMonth
+      registeredMonth: ''
   });
 
-  const hideServiceCards = true;
-
+  // Constants - Nepali Labels
   const DEPARTMENT_LABELS: Record<string, string> = {
-    [AppView.GENERAL_TREATMENT]: 'General Treatment (OPD)',
-    [AppView.X_RAY]: 'X-Ray Services',
-    [AppView.USG]: 'USG (Video X-Ray)',
-    [AppView.ECG]: 'ECG Services',
-    [AppView.DRESSING_MINOR_OT]: 'Dressing & Minor OT',
-    [AppView.MCH]: 'Maternal & Child Health',
-    [AppView.IMMUNIZATION]: 'Immunization (खोप)',
-    [AppView.TB_LEPROSY]: 'TB & Leprosy',
-    [AppView.NUTRITION]: 'Nutrition Clinic',
-    [AppView.CBIMNCI]: 'CBIMNCI',
-    [AppView.COMMUNICABLE]: 'Communicable Diseases',
-    [AppView.NON_COMMUNICABLE]: 'Non-Communicable Diseases',
+    [AppView.GENERAL_TREATMENT]: 'जनरल उपचार (OPD)',
+    [AppView.X_RAY]: 'एक्स-रे सेवा (X-Ray)',
+    [AppView.USG]: 'भिडियो एक्स-रे (USG)',
+    [AppView.ECG]: 'ई.सी.जी. सेवा (ECG)',
+    [AppView.DRESSING_MINOR_OT]: 'ड्रेसिङ र माइनर ओ.टी.',
+    [AppView.MCH]: 'मातृ तथा नवजात शिशु (MCH)',
+    [AppView.IMMUNIZATION]: 'खोप सेवा (Immunization)',
+    [AppView.TB_LEPROSY]: 'क्षयरोग तथा कुष्ठरोग',
+    [AppView.NUTRITION]: 'पोषण क्लिनिक (Nutrition)',
+    [AppView.CBIMNCI]: 'बाल रोग (CBIMNCI)',
+    [AppView.COMMUNICABLE]: 'सरुवा रोग (Communicable)',
+    [AppView.NON_COMMUNICABLE]: 'नसर्ने रोग (Non-Communicable)',
   };
 
   const NEPALI_MONTHS = [
@@ -113,34 +116,6 @@ export const Services: React.FC<ServicesProps> = ({
     "Poush (पुष)", "Magh (माघ)", "Falgun (फाल्गुन)", "Chaitra (चैत्र)"
   ];
 
-  const getDepartmentIcon = (cat: string) => {
-     switch(cat) {
-        case AppView.X_RAY: return Zap;
-        case AppView.USG: return Activity;
-        case AppView.ECG: return HeartPulse;
-        case AppView.DRESSING_MINOR_OT: return Cross;
-        case AppView.IMMUNIZATION: return Syringe;
-        default: return Stethoscope;
-     }
-  };
-
-  const currentServicesList = useMemo(() => {
-     return servicesCatalog.filter(s => s.category === department);
-  }, [servicesCatalog, department]);
-
-  const frequencyOptions = [
-    { label: 'OD - दिनको एक पटक (1-0-0)', value: '1-0-0', multiplier: 1 },
-    { label: 'BID - दिनको दुई पटक (1-0-1)', value: '1-0-1', multiplier: 2 },
-    { label: 'TDS - दिनको तीन पटक (1-1-1)', value: '1-1-1', multiplier: 3 },
-    { label: 'QID - चार पटक (1-1-1-1)', value: '1-1-1-1', multiplier: 4 },
-    { label: 'HS - राती सुत्ने बेला (0-0-1)', value: '0-0-1', multiplier: 1 },
-    { label: 'SOS - आवश्यक पर्दा (As Needed)', value: 'SOS', multiplier: 0 },
-  ];
-
-  const ethnicityOptions = [
-    "1 - Dalit", "2 - Janajati", "3 - Madhesi", "4 - Muslim", "5 - Brahmin/Chhetri", "6 - Others"
-  ];
-  
   const COMMON_LAB_TESTS = [
       "CBC (Complete Blood Count)", "Hemoglobin", "Blood Grouping", 
       "Urine Routine / Microscopic", "Stool Routine / Microscopic",
@@ -153,6 +128,129 @@ export const Services: React.FC<ServicesProps> = ({
       "Widal Test", "Dengue NS1 Ag", "HBsAg", "HCV", "HIV I & II", "VDRL"
   ];
 
+  const frequencyOptions = [
+    { label: 'OD - दिनको एक पटक (1-0-0)', value: '1-0-0', multiplier: 1 },
+    { label: 'BID - दिनको दुई पटक (1-0-1)', value: '1-0-1', multiplier: 2 },
+    { label: 'TDS - दिनको तीन पटक (1-1-1)', value: '1-1-1', multiplier: 3 },
+    { label: 'QID - चार पटक (1-1-1-1)', value: '1-1-1-1', multiplier: 4 },
+    { label: 'HS - राती सुत्ने बेला (0-0-1)', value: '0-0-1', multiplier: 1 },
+    { label: 'SOS - आवश्यक पर्दा (As Needed)', value: 'SOS', multiplier: 0 },
+  ];
+
+  // Effects & Data Loading
+  useEffect(() => {
+    loadRecords();
+    loadServiceCatalog();
+  }, [activeOrgId, department]);
+
+  useEffect(() => {
+    if (autoOpenRegistration && permissions.patientRegister && activeOrgId !== 'ALL') {
+       handleOpenModal();
+    }
+  }, [autoOpenRegistration, permissions.patientRegister, activeOrgId, preSelectedService]);
+
+  useEffect(() => {
+    if (!duration) return;
+    const selectedFreq = frequencyOptions.find(f => f.value === freq);
+    const multiplier = selectedFreq ? selectedFreq.multiplier : 0;
+    const days = parseInt(duration) || 0;
+    if (multiplier > 0 && days > 0) {
+      setQty(multiplier * days);
+    }
+  }, [freq, duration]);
+
+  useEffect(() => {
+     if (isRabiesModalOpen && rabiesFormData.schedule.day0) {
+         const d0 = rabiesFormData.schedule.day0;
+         setRabiesFormData(prev => ({
+             ...prev,
+             schedule: {
+                 ...prev.schedule,
+                 day3: addDaysToBS(d0, 3),
+                 day7: addDaysToBS(d0, 7),
+                 day14: addDaysToBS(d0, 14),
+                 day28: addDaysToBS(d0, 28)
+             }
+         }));
+     }
+  }, [rabiesFormData.schedule.day0, isRabiesModalOpen]);
+
+  const loadServiceCatalog = async () => {
+     try {
+        const catalog = await dbService.getAllServices();
+        setServicesCatalog(catalog);
+     } catch (e) {
+        console.error("Failed to load service catalog");
+     }
+  };
+
+  const loadRecords = async () => {
+    try {
+      const allRecords = await dbService.getAllServiceRecords();
+      let filtered = allRecords;
+      if (activeOrgId && activeOrgId !== 'ALL') {
+          filtered = allRecords.filter(r => r.organizationId === activeOrgId);
+      }
+      
+      if (preSelectedService && preSelectedService.includes('Rabies')) {
+          filtered = filtered.filter(r => 
+             r.department === AppView.COMMUNICABLE || r.serviceType.toLowerCase().includes('rabies')
+          );
+      } else {
+          filtered = filtered.filter(r => {
+             const recordDept = r.department || AppView.GENERAL_TREATMENT;
+             return recordDept === department;
+          });
+      }
+
+      setRecords(filtered.sort((a, b) => b.timestamp - a.timestamp));
+    } catch (e) {
+      console.error("Failed to load records", e);
+    }
+  };
+
+  // Memos
+  const currentServicesList = useMemo(() => {
+     return servicesCatalog.filter(s => s.category === department);
+  }, [servicesCatalog, department]);
+
+  const displayRecords = useMemo(() => {
+     return records.filter(r => 
+        r.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        r.patientId.toLowerCase().includes(searchTerm.toLowerCase())
+     );
+  }, [records, searchTerm]);
+
+  const filteredMeds = useMemo(() => {
+     if (!medSearch) return [];
+     return inventory.filter(m => 
+       (m.name.toLowerCase().includes(medSearch.toLowerCase()) || 
+       m.genericName.toLowerCase().includes(medSearch.toLowerCase())) && m.stock > 0
+     );
+  }, [medSearch, inventory]);
+
+  const filteredLabTests = useMemo(() => {
+     if (!newLabTestName) return [];
+     const catalogTests = servicesCatalog.filter(s => s.category === 'LAB').map(s => s.name);
+     const allTests = Array.from(new Set([...catalogTests, ...COMMON_LAB_TESTS]));
+     return allTests.filter(t => t.toLowerCase().includes(newLabTestName.toLowerCase()));
+  }, [newLabTestName, servicesCatalog]);
+  
+  const filteredServiceRequests = useMemo(() => {
+      if(!requestCategory) return [];
+      return servicesCatalog.filter(s => s.category === requestCategory);
+  }, [requestCategory, servicesCatalog]);
+
+  const patientFullHistory = useMemo(() => {
+    if (!selectedHistory) return [];
+    return records.filter(r => 
+      r.patientId === selectedHistory.patientId && 
+      r.status === 'COMPLETED' &&
+      r.id !== selectedHistory.id 
+    );
+  }, [selectedHistory, records]);
+
+  // Handlers
   const generateUniqueId = () => {
     const prefix = "PAT";
     const year = new Date().getFullYear();
@@ -160,7 +258,7 @@ export const Services: React.FC<ServicesProps> = ({
     return `${prefix}-${year}-${random}`;
   };
 
-  const handleOpenModal = (serviceName: string = '', price?: number) => {
+  const handleOpenModal = () => {
     if (!permissions.patientRegister) return; 
     if (activeOrgId === 'ALL') {
         alert("कृपया बिरामी दर्ता गर्नको लागि एक विशिष्ट संस्था चयन गर्नुहोस्।");
@@ -168,7 +266,7 @@ export const Services: React.FC<ServicesProps> = ({
     }
     
     let defaultLabel = DEPARTMENT_LABELS[department] || "General Services";
-    let defaultPrice = price !== undefined ? price : (currentServicesList[0]?.price || 0);
+    let defaultPrice = (currentServicesList[0]?.price || 0);
 
     if (preSelectedService) {
         defaultLabel = preSelectedService;
@@ -189,136 +287,6 @@ export const Services: React.FC<ServicesProps> = ({
       department: department 
     });
     setIsModalOpen(true);
-  };
-
-  useEffect(() => {
-    loadRecords();
-    loadServiceCatalog();
-  }, [activeOrgId, department]);
-
-  const loadServiceCatalog = async () => {
-     try {
-        const catalog = await dbService.getAllServices();
-        setServicesCatalog(catalog);
-     } catch (e) {
-        console.error("Failed to load service catalog");
-     }
-  };
-
-  useEffect(() => {
-    if (autoOpenRegistration && permissions.patientRegister && activeOrgId !== 'ALL') {
-       handleOpenModal();
-    }
-  }, [autoOpenRegistration, permissions.patientRegister, activeOrgId, preSelectedService]);
-
-  useEffect(() => {
-    if (!duration) return;
-    const selectedFreq = frequencyOptions.find(f => f.value === freq);
-    const multiplier = selectedFreq ? selectedFreq.multiplier : 0;
-    const days = parseInt(duration) || 0;
-    if (multiplier > 0 && days > 0) {
-      setQty(multiplier * days);
-    }
-  }, [freq, duration]);
-  
-  // Rabies Schedule Auto-Calculation when Day 0 Changes
-  useEffect(() => {
-     if (isRabiesModalOpen && rabiesFormData.schedule.day0) {
-         const d0 = rabiesFormData.schedule.day0;
-         setRabiesFormData(prev => ({
-             ...prev,
-             schedule: {
-                 ...prev.schedule,
-                 day3: addDaysToBS(d0, 3),
-                 day7: addDaysToBS(d0, 7),
-                 day14: addDaysToBS(d0, 14),
-                 day28: addDaysToBS(d0, 28)
-             }
-         }));
-     }
-  }, [rabiesFormData.schedule.day0, isRabiesModalOpen]);
-
-  const loadRecords = async () => {
-    try {
-      const allRecords = await dbService.getAllServiceRecords();
-      let filtered = allRecords;
-      if (activeOrgId && activeOrgId !== 'ALL') {
-          filtered = allRecords.filter(r => r.organizationId === activeOrgId);
-      }
-      
-      // Special Filter logic for Rabies View
-      // Show if Department matches OR if the serviceType includes "Rabies" (from billing)
-      if (preSelectedService && preSelectedService.includes('Rabies')) {
-          filtered = filtered.filter(r => 
-             r.department === AppView.COMMUNICABLE || r.serviceType.toLowerCase().includes('rabies')
-          );
-      } else {
-          // Standard Department Filter
-          filtered = filtered.filter(r => {
-             const recordDept = r.department || AppView.GENERAL_TREATMENT;
-             return recordDept === department;
-          });
-      }
-
-      setRecords(filtered.sort((a, b) => b.timestamp - a.timestamp));
-    } catch (e) {
-      console.error("Failed to load records", e);
-    }
-  };
-
-  const pendingQueues = useMemo(() => {
-    const pending = records.filter(r => r.status === 'PENDING');
-    const grouped: Record<string, ServiceRecord[]> = {};
-    pending.forEach(record => {
-      if (!grouped[record.serviceType]) { grouped[record.serviceType] = []; }
-      grouped[record.serviceType].push(record);
-    });
-    Object.keys(grouped).forEach(key => { grouped[key].sort((a, b) => a.queueNumber - b.queueNumber); });
-    return grouped;
-  }, [records]);
-
-  const filteredMeds = useMemo(() => {
-     if (!medSearch) return [];
-     return inventory.filter(m => 
-       (m.name.toLowerCase().includes(medSearch.toLowerCase()) || 
-       m.genericName.toLowerCase().includes(medSearch.toLowerCase())) && m.stock > 0
-     );
-  }, [medSearch, inventory]);
-
-  const filteredLabTests = useMemo(() => {
-     if (!newLabTestName) return [];
-     // Combine catalog tests and common hardcoded tests
-     const catalogTests = servicesCatalog.filter(s => s.category === 'LAB').map(s => s.name);
-     const allTests = Array.from(new Set([...catalogTests, ...COMMON_LAB_TESTS]));
-     return allTests.filter(t => t.toLowerCase().includes(newLabTestName.toLowerCase()));
-  }, [newLabTestName, servicesCatalog]);
-  
-  const filteredServiceRequests = useMemo(() => {
-      if(!requestCategory) return [];
-      return servicesCatalog.filter(s => s.category === requestCategory);
-  }, [requestCategory, servicesCatalog]);
-
-  const patientFullHistory = useMemo(() => {
-    if (!selectedHistory) return [];
-    return records.filter(r => 
-      r.patientId === selectedHistory.patientId && 
-      r.status === 'COMPLETED' &&
-      r.id !== selectedHistory.id 
-    );
-  }, [selectedHistory, records]);
-
-  const handleServiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedDeptKey = e.target.value;
-    const label = DEPARTMENT_LABELS[selectedDeptKey];
-    const deptServices = servicesCatalog.filter(s => s.category === selectedDeptKey);
-    const defaultCost = deptServices[0]?.price || 0;
-
-    setFormData({
-      ...formData,
-      serviceType: label,
-      department: selectedDeptKey,
-      cost: defaultCost
-    });
   };
 
   const handleSubmitRegistration = async (e: React.FormEvent) => {
@@ -362,16 +330,17 @@ export const Services: React.FC<ServicesProps> = ({
        return;
     }
     
-    // Check if this is a Rabies View, open special modal
     if (preSelectedService && preSelectedService.includes('Rabies')) {
        setActiveConsultation(record);
        setIsRabiesModalOpen(true);
-       
+       setTempDemographics({
+           age: record.age > 0 ? record.age.toString() : '',
+           gender: record.gender !== 'Unknown' ? record.gender : 'Male'
+       });
        if (record.rabiesData) {
           setRabiesFormData(record.rabiesData);
        } else {
-           // Initialize new schedule with defaults
-           const todayBS = '2081-01-01'; // Default
+           const todayBS = getCurrentDateBS();
            setRabiesFormData({
               previousRecord: 'No',
               dateOfBite: todayBS,
@@ -396,7 +365,6 @@ export const Services: React.FC<ServicesProps> = ({
        return;
     }
 
-    // Standard Consultation
     setActiveConsultation(record);
     setFindings(record.findings || '');
     setDiagnosis(record.diagnosis || '');
@@ -410,16 +378,20 @@ export const Services: React.FC<ServicesProps> = ({
     setDuration('5');
     setQty(10); 
   };
-  
+
   const handleSaveRabies = async () => {
      if (!activeConsultation) return;
+     const ageNum = parseInt(tempDemographics.age);
+     const genderStr = tempDemographics.gender;
+     
      try {
-        await dbService.updateRabiesRecord(activeConsultation.id, rabiesFormData);
-        // Update local state
+        await dbService.updateRabiesRecord(activeConsultation.id, rabiesFormData, ageNum, genderStr);
         setRecords(prev => prev.map(r => r.id === activeConsultation.id ? { 
             ...r, 
             status: 'COMPLETED', 
-            rabiesData: rabiesFormData
+            rabiesData: rabiesFormData,
+            age: ageNum > 0 ? ageNum : r.age,
+            gender: genderStr || r.gender
         } : r));
         setIsRabiesModalOpen(false);
         setActiveConsultation(null);
@@ -521,51 +493,93 @@ export const Services: React.FC<ServicesProps> = ({
     }
   };
 
-  const handlePrintReport = () => {
-    if (!selectedHistory) return;
+  const handlePrintReport = (record: ServiceRecord) => {
     const settings = JSON.parse(localStorage.getItem('appSettings') || '{}');
     const storeName = settings.storeName || 'Smart Health';
-    const storeAddress = settings.address || 'Address';
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) { alert("Please allow popups to print reports"); return; }
     
-    // Simplified print logic for brevity (full version in previous code)
-    printWindow.document.write(`<html><body><h1>${storeName} - Report</h1><p>Patient: ${selectedHistory.patientName}</p><script>window.print()</script></body></html>`);
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>Medical Report - ${record.patientName}</title>
+            <style>
+                body { font-family: sans-serif; padding: 40px; color: #333; }
+                .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+                .header h1 { margin: 0; color: #000; font-size: 24px; }
+                .meta-table { width: 100%; margin-bottom: 20px; border-collapse: collapse; }
+                .meta-table td { padding: 5px; font-size: 14px; }
+                .section { margin-bottom: 20px; }
+                .section h3 { background: #eee; padding: 5px; font-size: 14px; margin-bottom: 5px; }
+                .content { font-size: 14px; line-height: 1.5; padding: 5px; }
+                .rx-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                .rx-table th, .rx-table td { border: 1px solid #ddd; padding: 5px; text-align: left; }
+                .footer { margin-top: 50px; text-align: right; border-top: 1px solid #ccc; padding-top: 10px; font-size: 12px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>${storeName}</h1>
+                <p>${record.organizationId || 'Main Branch'}</p>
+                <p>OPD REPORT</p>
+            </div>
+            <table class="meta-table">
+                <tr><td><strong>Patient ID:</strong> ${record.patientId}</td><td><strong>Date:</strong> ${new Date(record.timestamp).toLocaleDateString()}</td></tr>
+                <tr><td><strong>Name:</strong> ${record.patientName}</td><td><strong>Age/Sex:</strong> ${record.age} / ${record.gender}</td></tr>
+                <tr><td><strong>Address:</strong> ${record.address}</td><td><strong>Contact:</strong> ${record.contactNo}</td></tr>
+            </table>
+            
+            <div class="section">
+                <h3>Diagnosis (रोग पहिचान)</h3>
+                <div class="content">${record.diagnosis || 'N/A'}</div>
+            </div>
+            
+            <div class="section">
+                <h3>Clinical Findings (क्लिनिकल विवरण)</h3>
+                <div class="content">${record.findings || 'N/A'}</div>
+            </div>
+
+            ${record.prescription && record.prescription.length > 0 ? `
+            <div class="section">
+                <h3>Prescription (औषधी सिफारिस)</h3>
+                <table class="rx-table">
+                    <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Qty</th></tr></thead>
+                    <tbody>
+                        ${record.prescription.map(p => `<tr><td>${p.medicineName}</td><td>${p.dosage}</td><td>${p.frequency}</td><td>${p.duration}</td><td>${p.quantity}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>` : ''}
+
+            ${record.labRequests && record.labRequests.length > 0 ? `
+            <div class="section">
+                <h3>Lab Reports (ल्याब रिपोर्ट)</h3>
+                <table class="rx-table">
+                    <thead><tr><th>Test Name</th><th>Result</th></tr></thead>
+                    <tbody>
+                        ${record.labRequests.map(l => `<tr><td>${l.testName}</td><td>${l.result || 'Pending'}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>` : ''}
+
+            <div class="footer">
+                <p>Checked By: __________________</p>
+                <p>(Doctor / Medical Officer)</p>
+            </div>
+        </body>
+        </html>
+    `);
     printWindow.document.close();
-  };
-
-  const pendingRecords = records.filter(r => r.status === 'PENDING');
-  const filteredRecords = pendingRecords.filter(r => 
-    r.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || r.patientId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-  
-  // Update: If we are in Rabies View, we also want to see 'Active' patients who are coming for follow-ups (Status=COMPLETED but need updates)
-  // So we search ALL records for Rabies view if searching
-  const rabisActiveRecords = preSelectedService ? records.filter(r => 
-      (r.patientName.toLowerCase().includes(searchTerm.toLowerCase()) || r.patientId.toLowerCase().includes(searchTerm.toLowerCase()))
-  ) : filteredRecords;
-  
-  // Use rabisActiveRecords if we are in Rabies mode and have a search term, else default queue behavior
-  const displayRecords = (preSelectedService && searchTerm) ? rabisActiveRecords : filteredRecords;
-
-  const historyRecords = records.filter(r => r.status === 'COMPLETED');
-  const filteredHistory = historyRecords.filter(r => 
-    r.patientName.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
-    r.patientId.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
-    r.contactNo.includes(historySearchTerm)
-  );
-
-  const viewHistoryRecord = (record: ServiceRecord) => {
-     if (permissions.viewPatientHistory) { setSelectedHistory(record); } else { alert("पूर्ण विवरण हेर्ने अनुमति छैन।"); }
+    printWindow.print();
   };
 
   const isRegistrationDisabled = activeOrgId === 'ALL';
   const showOrgColumn = activeOrgId === 'ALL';
+  const isDemographicsValid = activeConsultation && activeConsultation.age > 0 && activeConsultation.gender !== 'Unknown';
 
   return (
     <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto pb-10">
        
-       {/* Header Section */}
        <div className="flex flex-col md:flex-row gap-6 justify-between items-end bg-gradient-to-r from-teal-600 to-blue-600 rounded-2xl p-6 md:p-8 text-white shadow-lg relative overflow-hidden">
           <div className="relative z-10 w-full md:w-auto">
              <h2 className="text-2xl md:text-3xl font-bold mb-2">{title}</h2>
@@ -586,75 +600,6 @@ export const Services: React.FC<ServicesProps> = ({
           <Stethoscope className="absolute right-10 -top-10 w-64 h-64 text-white opacity-10 rotate-12" />
        </div>
 
-       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-          
-          {/* Live Queue Section */}
-          <div className="lg:col-span-3">
-             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 h-full flex flex-col">
-                <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
-                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                      <ListOrdered className="w-5 h-5 text-teal-600" /> प्रत्यक्ष सेवा लाइन (Queue)
-                   </h3>
-                   <p className="text-xs text-slate-500">पालो कुरिरहेका बिरामीहरू</p>
-                </div>
-                <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-6 max-h-[600px]">
-                   {Object.keys(pendingQueues).length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-40 text-slate-400">
-                         <CheckCircle2 className="w-10 h-10 mb-2 opacity-20" />
-                         <p className="text-sm">कुनै बिरामी लाइनमा छैनन्</p>
-                      </div>
-                   ) : (
-                      Object.keys(pendingQueues).map(serviceName => (
-                         <div key={serviceName} className="space-y-2">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{serviceName}</h4>
-                            <div className="space-y-2">
-                               {pendingQueues[serviceName].map((record) => (
-                                  <div 
-                                     key={record.id} 
-                                     onClick={() => permissions.doctorConsultation && openConsultation(record)}
-                                     className={`bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col gap-1 transition-colors
-                                       ${permissions.doctorConsultation ? 'group hover:border-teal-200 cursor-pointer' : 'opacity-80'}`}
-                                  >
-                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3 w-full">
-                                            <div className="h-10 w-10 bg-teal-600 text-white rounded-lg flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
-                                            {record.queueNumber}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <div className="font-bold text-slate-800 text-sm truncate pr-2">{record.patientName}</div>
-                                                    <div className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-mono whitespace-nowrap">{record.patientId}</div>
-                                                </div>
-                                                <div className="text-[10px] text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
-                                                    <span>{record.gender}, {record.age}y</span>
-                                                    {record.contactNo && <span>📞 {record.contactNo}</span>}
-                                                    {record.address && <span className="truncate max-w-[150px]">📍 {record.address}</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {permissions.doctorConsultation && (
-                                            <button className="p-2 text-slate-400 hover:text-teal-600 rounded-lg transition-colors shrink-0">
-                                                <ChevronRight className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                     </div>
-                                     {showOrgColumn && (
-                                         <div className="text-[10px] text-slate-400 font-mono mt-1 text-right border-t border-slate-100 pt-1">
-                                             {record.organizationId}
-                                         </div>
-                                     )}
-                                  </div>
-                               ))}
-                            </div>
-                         </div>
-                      ))
-                   )}
-                </div>
-             </div>
-          </div>
-       </div>
-
-       {/* Active Patient List Section */}
        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
              <div>
@@ -676,7 +621,6 @@ export const Services: React.FC<ServicesProps> = ({
                 />
              </div>
           </div>
-          
           <div className="overflow-x-auto">
              <table className="w-full text-left min-w-[700px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
@@ -717,7 +661,7 @@ export const Services: React.FC<ServicesProps> = ({
                             </td>
                             <td className="px-6 py-4">
                                <div className="font-bold text-slate-900 text-sm">{record.patientName}</div>
-                               <div className="text-xs text-slate-500">{record.age}y / {record.gender}</div>
+                               <div className="text-xs text-slate-500">{record.age} बर्ष / {record.gender}</div>
                             </td>
                             <td className="px-6 py-4">
                                <div className="font-medium text-slate-700 text-sm">{record.serviceType}</div>
@@ -730,7 +674,7 @@ export const Services: React.FC<ServicesProps> = ({
                             <td className="px-6 py-4 text-right">
                                {permissions.doctorConsultation ? (
                                   <button className="text-sm font-medium text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 justify-end w-full">
-                                     Proceed <ChevronRight className="w-4 h-4" />
+                                     जाँच गर्नुहोस् <ChevronRight className="w-4 h-4" />
                                   </button>
                                ) : (
                                   <span className="text-xs text-slate-400 italic">View Only</span>
@@ -744,374 +688,522 @@ export const Services: React.FC<ServicesProps> = ({
           </div>
        </div>
 
-       {/* Medical Reports Section (Recent 3) */}
-       <div className="space-y-4">
-          <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-             <ClipboardList className="w-5 h-5 text-teal-600" /> भर्खरका मेडिकल रिपोर्टहरू (Recent Reports)
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-             {records.filter(r => r.status === 'COMPLETED').slice(0, 3).map(r => (
-                <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="font-bold text-slate-700">{r.patientName}</div>
-                        <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Completed</span>
-                    </div>
-                    <div className="text-xs text-slate-500 mb-2">{new Date(r.timestamp).toLocaleDateString()}</div>
-                    <p className="text-sm text-slate-600 truncate mb-3">{r.diagnosis || 'No Diagnosis'}</p>
-                    <button 
-                        onClick={() => viewHistoryRecord(r)}
-                        className="w-full py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                        View Full Report
-                    </button>
-                </div>
-             ))}
-          </div>
-       </div>
-
-       {/* Service History Section */}
+       {/* SERVICE HISTORY SECTION */}
        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-             <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <FileClock className="w-5 h-5 text-teal-600" /> सेवा इतिहास (Service History)
+          <div className="p-6 border-b border-slate-100">
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <History className="w-5 h-5 text-slate-500" /> सेवा इतिहास (Service History)
              </h3>
-             <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="पुराना रेकर्ड खोज्नुहोस्..." 
-                  value={historySearchTerm}
-                  onChange={(e) => setHistorySearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
-                />
-             </div>
           </div>
-          <div className="overflow-x-auto max-h-[400px] custom-scrollbar">
+          <div className="max-h-96 overflow-y-auto">
              <table className="w-full text-left">
-                <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
+                <thead className="bg-slate-50 sticky top-0">
                    <tr>
-                      {showOrgColumn && <th className="px-6 py-3 font-semibold text-slate-600 text-xs">Org</th>}
-                      <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Date</th>
-                      <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Patient</th>
-                      <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase">Diagnosis / Findings</th>
-                      <th className="px-6 py-3 font-semibold text-slate-600 text-xs uppercase text-right">Action</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">मिति</th>
+                      {showOrgColumn && <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">संस्था</th>}
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">बिरामी</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">सेवा</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">विवरण / कैफियत</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase text-right">कार्य</th>
                    </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                   {filteredHistory.length === 0 ? (
-                      <tr><td colSpan={showOrgColumn ? 5 : 4} className="px-6 py-8 text-center text-slate-500 text-sm">कुनै इतिहास भेटिएन।</td></tr>
-                   ) : (
-                      filteredHistory.map(record => (
-                         <tr key={record.id} onClick={() => viewHistoryRecord(record)} className="hover:bg-slate-50 cursor-pointer">
-                            {showOrgColumn && <td className="px-6 py-3 text-xs font-mono text-slate-500">{record.organizationId}</td>}
-                            <td className="px-6 py-3 text-slate-500 text-sm">{new Date(record.timestamp).toLocaleDateString()}</td>
-                            <td className="px-6 py-3">
-                               <div className="font-medium text-slate-800 text-sm">{record.patientName}</div>
-                               <div className="text-xs text-slate-400">{record.patientId}</div>
-                            </td>
-                            <td className="px-6 py-3 text-sm text-slate-600">
-                               {record.diagnosis || record.findings || '-'}
-                            </td>
-                            <td className="px-6 py-3 text-right">
-                               <button className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded text-slate-600 font-medium">
-                                  Details
-                                </button>
-                            </td>
-                         </tr>
-                      ))
-                   )}
+                   {records.filter(r => r.status === 'COMPLETED').map(r => (
+                      <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                         <td className="px-6 py-3 text-xs text-slate-500">{new Date(r.timestamp).toLocaleDateString()}</td>
+                         {showOrgColumn && <td className="px-6 py-3 text-xs text-slate-500 font-mono">{r.organizationId}</td>}
+                         <td className="px-6 py-3">
+                            <div className="text-sm font-medium text-slate-800">{r.patientName}</div>
+                            <div className="text-xs text-slate-400">{r.patientId}</div>
+                         </td>
+                         <td className="px-6 py-3 text-sm text-slate-600">{r.serviceType}</td>
+                         <td className="px-6 py-3 text-sm text-slate-600 truncate max-w-xs">{r.findings || '-'}</td>
+                         <td className="px-6 py-3 text-right">
+                            <button 
+                               onClick={() => setSelectedHistory(r)}
+                               className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded transition-colors"
+                            >
+                               विवरण हेर्नुहोस्
+                            </button>
+                         </td>
+                      </tr>
+                   ))}
                 </tbody>
              </table>
           </div>
        </div>
-       
-       {/* STANDARD CONSULTATION MODAL - RESTORED */}
-       {activeConsultation && !isRabiesModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-             <div className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]">
-                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                   <div className="flex items-center gap-3">
-                      <div className="bg-teal-600 p-2 rounded-lg text-white">
-                         <Stethoscope className="w-6 h-6" />
-                      </div>
-                      <div>
-                         <h3 className="text-lg font-bold text-slate-800">Clinical Consultation</h3>
-                         <p className="text-xs text-slate-500">{activeConsultation.patientName} ({activeConsultation.age}y/{activeConsultation.gender})</p>
-                      </div>
-                   </div>
-                   <button onClick={() => setActiveConsultation(null)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200">
-                      <X className="w-6 h-6" />
-                   </button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      
-                      {/* Left: Clinical Details */}
-                      <div className="space-y-6">
-                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                               <Activity className="w-4 h-4 text-teal-600" /> Clinical Findings
-                            </h4>
-                            <div className="space-y-4">
-                               <div className="space-y-1">
-                                  <label className="text-xs font-semibold text-slate-500 uppercase">Diagnosis</label>
-                                  <input 
-                                     type="text" 
-                                     className="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                     placeholder="e.g. Viral Fever"
-                                     value={diagnosis}
-                                     onChange={(e) => setDiagnosis(e.target.value)}
-                                  />
-                               </div>
-                               <div className="space-y-1">
-                                  <label className="text-xs font-semibold text-slate-500 uppercase">Chief Complaints / Examination</label>
-                                  <textarea 
-                                     rows={4}
-                                     className="w-full p-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                     placeholder="Enter clinical notes..."
-                                     value={findings}
-                                     onChange={(e) => setFindings(e.target.value)}
-                                  />
-                               </div>
-                            </div>
-                         </div>
-                         
-                         {/* Lab Requests Section */}
-                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                               <FlaskConical className="w-4 h-4 text-purple-600" /> Investigation / Lab Request
-                            </h4>
-                            <div className="flex gap-2 mb-3 relative">
-                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                               <input 
-                                  type="text" 
-                                  className="flex-1 pl-9 pr-2 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-purple-500"
-                                  placeholder="Search test name (e.g. CBC)"
-                                  value={newLabTestName}
-                                  onChange={(e) => { setNewLabTestName(e.target.value); setShowLabSuggestions(true); }}
-                                  onFocus={() => setShowLabSuggestions(true)}
-                                  onBlur={() => setTimeout(() => setShowLabSuggestions(false), 200)}
-                               />
-                               <button 
-                                  onClick={() => handleAddLabRequest()}
-                                  className="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium"
-                               >
-                                  Add
-                               </button>
-                               {/* Suggestions Dropdown */}
-                               {showLabSuggestions && filteredLabTests.length > 0 && (
-                                  <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto z-20">
-                                      {filteredLabTests.map(test => (
-                                          <div 
-                                              key={test} 
-                                              className="px-4 py-2 hover:bg-purple-50 cursor-pointer text-sm text-slate-700"
-                                              onMouseDown={() => handleAddLabRequest(test)}
-                                          >
-                                              {test}
-                                          </div>
-                                      ))}
-                                  </div>
-                               )}
-                            </div>
-                            
-                            {/* Quick Add Common Tests */}
-                            <div className="flex flex-wrap gap-2 mb-3">
-                                {['CBC', 'Urine R/E', 'Blood Sugar', 'Lipid Profile', 'Uric Acid'].map(t => (
-                                    <button 
-                                        key={t}
-                                        onClick={() => handleAddLabRequest(t)}
-                                        className="text-[10px] bg-slate-50 border border-slate-200 hover:border-purple-300 hover:text-purple-700 px-2 py-1 rounded-full transition-colors"
-                                    >
-                                        + {t}
-                                    </button>
-                                ))}
-                            </div>
 
-                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                               {labRequestList.map((test, idx) => (
-                                  <div key={idx} className="flex justify-between items-center p-2 bg-purple-50 rounded border border-purple-100 text-sm">
-                                     <span className="font-medium text-slate-700">{test.testName}</span>
-                                     <button onClick={() => removeLabRequest(idx)} className="text-purple-400 hover:text-purple-600">
-                                        <X className="w-4 h-4" />
-                                     </button>
-                                  </div>
-                               ))}
-                               {labRequestList.length === 0 && <p className="text-xs text-slate-400 italic text-center py-2">No labs requested</p>}
-                            </div>
-                         </div>
-                         
-                         {/* Other Service Requests (X-Ray, USG, etc) */}
-                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                               <PlusCircle className="w-4 h-4 text-blue-600" /> थप सेवा अनुरोध (Additional Requests)
-                            </h4>
-                            <div className="flex flex-col gap-2 mb-3">
-                                <div className="flex gap-2">
-                                  <select 
-                                      className="w-1/3 p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 font-medium"
-                                      value={requestCategory}
-                                      onChange={(e) => { setRequestCategory(e.target.value as any); setSelectedRequestItem(''); }}
-                                  >
-                                      <option value={AppView.X_RAY}>X-Ray</option>
-                                      <option value={AppView.USG}>USG</option>
-                                      <option value={AppView.ECG}>ECG</option>
-                                      <option value={AppView.DRESSING_MINOR_OT}>Procedure</option>
-                                      <option value={AppView.IMMUNIZATION}>Vaccine</option>
-                                  </select>
-                                  <select 
-                                      className="flex-1 p-2 text-sm border border-slate-200 rounded-lg"
-                                      value={selectedRequestItem}
-                                      onChange={(e) => setSelectedRequestItem(e.target.value)}
-                                  >
-                                      <option value="">Select Service...</option>
-                                      {filteredServiceRequests.map(s => (
-                                          <option key={s.id} value={`${s.id}||${s.name}||${s.price}`}>
-                                              {s.name}
-                                          </option>
-                                      ))}
-                                  </select>
-                                  <button 
-                                      onClick={handleAddServiceRequest}
-                                      disabled={!selectedRequestItem}
-                                      className="bg-blue-600 text-white px-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                                  >
-                                      <Plus className="w-4 h-4" />
-                                  </button>
-                               </div>
-                            </div>
-                            <div className="space-y-2">
-                               {serviceRequestList.map((req, idx) => (
-                                  <div key={idx} className="flex justify-between items-center p-2 bg-blue-50 rounded border border-blue-100 text-sm">
-                                     <div>
-                                         <span className="font-medium text-slate-700 block">{req.name}</span>
-                                         <span className="text-[10px] text-slate-500 uppercase">{req.category}</span>
-                                     </div>
-                                     <button onClick={() => removeServiceRequest(idx)} className="text-blue-400 hover:text-blue-600">
-                                        <X className="w-4 h-4" />
-                                     </button>
-                                  </div>
-                               ))}
-                            </div>
-                         </div>
-                      </div>
-
-                      {/* Right: Prescription */}
-                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
-                         <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                            <Pill className="w-4 h-4 text-teal-600" /> Prescription
-                         </h4>
-                         
-                         {/* Medicine Selector */}
-                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4 space-y-3">
-                            <div className="relative">
-                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                               <input 
-                                  type="text" 
-                                  className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                  placeholder="Search Medicine..."
-                                  value={medSearch}
-                                  onChange={(e) => { setMedSearch(e.target.value); setSelectedMed(null); }}
-                               />
-                               {medSearch && filteredMeds.length > 0 && !selectedMed && (
-                                  <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl mt-1 max-h-40 overflow-y-auto z-20">
-                                     {filteredMeds.map(m => (
-                                        <div 
-                                           key={m.id} 
-                                           className="px-4 py-2 hover:bg-teal-50 cursor-pointer text-sm"
-                                           onClick={() => { setSelectedMed(m); setMedSearch(m.name); }}
-                                        >
-                                           <div className="font-medium text-slate-800">{m.name}</div>
-                                           <div className="text-xs text-slate-500">{m.genericName} • Stock: {m.stock}</div>
-                                        </div>
-                                     ))}
-                                  </div>
-                               )}
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                               <input type="text" placeholder="Dose (e.g. 500mg)" className="p-2 text-sm border border-slate-200 rounded-lg" value={dose} onChange={e => setDose(e.target.value)} />
-                               <div className="relative">
-                                  <select className="w-full p-2 text-sm border border-slate-200 rounded-lg appearance-none bg-white" value={freq} onChange={e => setFreq(e.target.value)}>
-                                     {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                  </select>
-                               </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                               <div className="flex items-center gap-2">
-                                  <input type="number" placeholder="Days" className="w-full p-2 text-sm border border-slate-200 rounded-lg" value={duration} onChange={e => setDuration(e.target.value)} />
-                                  <span className="text-xs text-slate-500 font-medium">Days</span>
-                               </div>
-                               <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2">
-                                  <span className="text-xs text-slate-500 font-medium">Qty:</span>
-                                  <input type="number" className="w-full p-2 text-sm outline-none font-bold text-teal-700" value={qty} onChange={e => setQty(parseInt(e.target.value))} />
-                                  <span className="text-xs text-slate-400">Tabs</span>
-                               </div>
-                            </div>
-                            <button 
-                               onClick={addMedicineToPrescription}
-                               disabled={!selectedMed}
-                               className="w-full bg-teal-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
-                            >
-                               Add to List
-                            </button>
-                         </div>
-
-                         {/* Medicine List Table */}
-                         <div className="flex-1 overflow-y-auto border border-slate-200 rounded-lg bg-white">
-                            <table className="w-full text-left text-sm">
-                               <thead className="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase">
-                                  <tr>
-                                     <th className="px-3 py-2">Medicine</th>
-                                     <th className="px-3 py-2">Dosage</th>
-                                     <th className="px-3 py-2 text-center">Qty</th>
-                                     <th className="px-3 py-2 w-8"></th>
-                                  </tr>
-                               </thead>
-                               <tbody className="divide-y divide-slate-50">
-                                  {prescriptionList.length === 0 ? (
-                                     <tr><td colSpan={4} className="p-4 text-center text-slate-400 italic">No medicines prescribed</td></tr>
-                                  ) : (
-                                     prescriptionList.map((item, idx) => (
-                                        <tr key={idx}>
-                                           <td className="px-3 py-2">
-                                              <div className="font-medium text-slate-800">{item.medicineName}</div>
-                                              <div className="text-[10px] text-slate-500">{item.duration}</div>
-                                           </td>
-                                           <td className="px-3 py-2 text-slate-600 text-xs">{item.dosage} • {item.frequency}</td>
-                                           <td className="px-3 py-2 text-center font-medium text-teal-600">{item.quantity}</td>
-                                           <td className="px-3 py-2 text-center">
-                                              <button onClick={() => removeMedicineFromPrescription(idx)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
-                                           </td>
-                                        </tr>
-                                     ))
-                                  )}
-                               </tbody>
-                            </table>
-                         </div>
-                         
-                         {/* Auto Calc Cost (Estimate) */}
-                         <div className="mt-3 text-right text-xs text-slate-500">
-                            Est. Cost: <span className="font-bold text-slate-800">Rs. {prescriptionList.reduce((acc, i) => acc + (i.price * i.quantity), 0).toFixed(2)}</span>
-                         </div>
-                      </div>
-                   </div>
-                </div>
-
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
-                   <button onClick={() => setActiveConsultation(null)} className="px-6 py-2.5 text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 font-medium">Cancel</button>
-                   <button 
-                      onClick={handleCompleteConsultation}
-                      className="px-6 py-2.5 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-medium shadow-lg shadow-teal-900/20 flex items-center gap-2"
-                   >
-                      <Save className="w-4 h-4" /> Save & Send to Billing
-                   </button>
-                </div>
+       {/* REGISTRATION MODAL */}
+       {isModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 h-[100dvh]">
+           <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]">
+             <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+               <h3 className="text-lg font-bold text-slate-800">नयाँ सेवाग्राही दर्ता फारम (Patient Registration)</h3>
+               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-200 rounded-full">
+                 <X className="w-6 h-6" />
+               </button>
              </div>
-          </div>
+             
+             <div className="p-6 overflow-y-auto flex-1">
+               <form id="registrationForm" onSubmit={handleSubmitRegistration} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 
+                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 md:col-span-2 flex justify-between items-center">
+                    <div>
+                        <span className="text-xs text-blue-600 uppercase font-bold block mb-1">Patient ID (Auto)</span>
+                        <span className="text-xl font-mono font-bold text-blue-900 tracking-wider">{formData.patientId}</span>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-xs text-blue-600 uppercase font-bold block mb-1">Date</span>
+                        <span className="text-sm font-bold text-blue-900">{new Date().toLocaleDateString()}</span>
+                    </div>
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">बिरामीको नाम (Name)</label>
+                   <input required type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500" 
+                     value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} />
+                 </div>
+                 
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">उमेर (Age)</label>
+                        <input required type="number" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500" 
+                        value={formData.age} onChange={e => setFormData({...formData, age: e.target.value})} />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">लिङ्ग (Gender)</label>
+                        <select className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white"
+                        value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
+                        <option>Male</option>
+                        <option>Female</option>
+                        <option>Other</option>
+                        </select>
+                    </div>
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">ठेगाना (Address)</label>
+                   <input required type="text" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500" 
+                     value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">सम्पर्क नं (Contact)</label>
+                   <input type="tel" className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500" 
+                     value={formData.contactNo} onChange={e => setFormData({...formData, contactNo: e.target.value})} />
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">जातिगत विवरण (Ethnicity)</label>
+                   <select className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white"
+                     value={formData.ethnicity} onChange={e => setFormData({...formData, ethnicity: e.target.value})}>
+                     <option>1 - Dalit</option>
+                     <option>2 - Janajati</option>
+                     <option>3 - Madheshi</option>
+                     <option>4 - Muslim</option>
+                     <option>5 - Brahmin/Chhetri</option>
+                     <option>6 - Other</option>
+                   </select>
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">सेवाको प्रकार (Department / Service)</label>
+                   <select 
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 bg-white"
+                      value={formData.department} 
+                      onChange={(e) => {
+                         const dept = e.target.value;
+                         const label = DEPARTMENT_LABELS[dept] || dept;
+                         // Find default cost from catalog for this department
+                         const deptServices = servicesCatalog.filter(s => s.category === dept);
+                         const price = deptServices.length > 0 ? deptServices[0].price : 0;
+                         
+                         setFormData({
+                            ...formData, 
+                            department: dept, 
+                            serviceType: label,
+                            cost: price
+                         });
+                      }}
+                   >
+                      <option value="">-- विभाग छान्नुहोस् --</option>
+                      {Object.entries(DEPARTMENT_LABELS).map(([key, label]) => (
+                         <option key={key} value={key}>{label}</option>
+                      ))}
+                   </select>
+                 </div>
+
+                 <div className="space-y-1">
+                   <label className="text-xs font-bold text-slate-500 uppercase">शुल्क (Fee)</label>
+                   <input 
+                      type="number" 
+                      className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 font-bold text-teal-600" 
+                      value={formData.cost} 
+                      onChange={e => setFormData({...formData, cost: parseFloat(e.target.value)})} 
+                   />
+                 </div>
+
+               </form>
+             </div>
+
+             <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
+               <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-3 text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 font-medium">रद्द गर्नुहोस्</button>
+               <button type="submit" form="registrationForm" className="px-6 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-medium shadow-lg shadow-teal-900/20">दर्ता गर्नुहोस्</button>
+             </div>
+           </div>
+         </div>
        )}
 
-       {/* SPECIAL RABIES REGISTRATION MODAL */}
+       {/* CONSULTATION MODAL */}
+       {activeConsultation && !isRabiesModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 h-[100dvh]">
+           <div className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]">
+             <div className="px-6 py-4 border-b border-slate-200 bg-teal-50 flex justify-between items-center shrink-0">
+               <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-bold">
+                     <Stethoscope className="w-5 h-5" />
+                  </div>
+                  <div>
+                     <h3 className="text-lg font-bold text-slate-800">डाक्टर परामर्श (Clinical Consultation)</h3>
+                     <p className="text-xs text-slate-500">{activeConsultation.patientName} ({activeConsultation.age}/{activeConsultation.gender})</p>
+                  </div>
+               </div>
+               <button onClick={() => setActiveConsultation(null)} className="text-slate-400 hover:text-slate-600">
+                 <X className="w-6 h-6" />
+               </button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  
+                  {/* Left Column: Clinical Notes & Diagnosis */}
+                  <div className="space-y-6">
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                           <Activity className="w-4 h-4 text-teal-500" /> Clinical Notes
+                        </h4>
+                        <div className="space-y-4">
+                           <div>
+                              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">रोग पहिचान (Diagnosis)</label>
+                              <input 
+                                 type="text" 
+                                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm"
+                                 placeholder="e.g. Acute Gastritis"
+                                 value={diagnosis}
+                                 onChange={(e) => setDiagnosis(e.target.value)}
+                              />
+                           </div>
+                           <div>
+                              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">क्लिनिकल विवरण (Findings)</label>
+                              <textarea 
+                                 className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm h-32 resize-none"
+                                 placeholder="बिरामीको समस्या र लक्षणहरू..."
+                                 value={findings}
+                                 onChange={(e) => setFindings(e.target.value)}
+                              ></textarea>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Lab Requests */}
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                           <Activity className="w-4 h-4 text-purple-500" /> ल्याब परीक्षण अनुरोध (Lab Request)
+                        </h4>
+                        <div className="space-y-3">
+                           <div className="flex gap-2 relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                              <input 
+                                 type="text" 
+                                 className="flex-1 pl-9 p-2 border border-slate-200 rounded-lg text-sm"
+                                 placeholder="Test खोज्नुहोस् (e.g. CBC)"
+                                 value={newLabTestName}
+                                 onChange={(e) => { setNewLabTestName(e.target.value); setShowLabSuggestions(true); }}
+                                 onFocus={() => setShowLabSuggestions(true)}
+                                 onBlur={() => setTimeout(() => setShowLabSuggestions(false), 200)}
+                              />
+                              <button onClick={() => handleAddLabRequest()} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-medium">थप्नुहोस्</button>
+                              
+                              {/* Suggestions */}
+                              {showLabSuggestions && filteredLabTests.length > 0 && (
+                                 <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto z-10">
+                                    {filteredLabTests.map((test, idx) => (
+                                       <div 
+                                          key={idx} 
+                                          className="px-3 py-2 hover:bg-purple-50 cursor-pointer text-sm"
+                                          onMouseDown={() => handleAddLabRequest(test)}
+                                       >
+                                          {test}
+                                       </div>
+                                    ))}
+                                 </div>
+                              )}
+                           </div>
+                           
+                           <div className="space-y-2">
+                              {labRequestList.map((test, idx) => (
+                                 <div key={idx} className="flex justify-between items-center bg-purple-50 p-2 rounded-lg border border-purple-100">
+                                    <span className="text-sm font-medium text-purple-800">{test.testName}</span>
+                                    <button onClick={() => removeLabRequest(idx)} className="text-purple-400 hover:text-purple-600"><X className="w-4 h-4" /></button>
+                                 </div>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Other Service Requests */}
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                           <Activity className="w-4 h-4 text-orange-500" /> थप सेवा अनुरोध (Additional Requests)
+                        </h4>
+                        <div className="flex gap-2 mb-2">
+                           <select 
+                              className="p-2 text-xs border border-slate-200 rounded-lg bg-slate-50"
+                              value={requestCategory}
+                              onChange={(e) => setRequestCategory(e.target.value)}
+                           >
+                              <option value="X_RAY">X-Ray</option>
+                              <option value="USG">USG</option>
+                              <option value="ECG">ECG</option>
+                              <option value="IMMUNIZATION">Vaccine</option>
+                              <option value="DRESSING_MINOR_OT">Procedures</option>
+                           </select>
+                           <select 
+                              className="flex-1 p-2 text-xs border border-slate-200 rounded-lg"
+                              value={selectedRequestItem}
+                              onChange={(e) => {
+                                 setSelectedRequestItem(e.target.value);
+                              }}
+                           >
+                              <option value="">सेवा छान्नुहोस्...</option>
+                              {filteredServiceRequests.map(s => (
+                                 <option key={s.id} value={`${s.id}||${s.name}||${s.price}`}>{s.name} (Rs.{s.price})</option>
+                              ))}
+                           </select>
+                           <button onClick={handleAddServiceRequest} className="bg-orange-500 text-white px-3 py-1 rounded-lg text-xs font-bold">थप्नुहोस्</button>
+                        </div>
+                        <div className="space-y-1">
+                           {serviceRequestList.map((req, idx) => (
+                              <div key={idx} className="flex justify-between items-center bg-orange-50 p-2 rounded border border-orange-100">
+                                 <div className="text-xs">
+                                    <span className="font-bold text-orange-800 block">{req.name}</span>
+                                    <span className="text-orange-600">{req.category}</span>
+                                 </div>
+                                 <button onClick={() => removeServiceRequest(idx)} className="text-orange-400 hover:text-orange-600"><X className="w-3 h-3" /></button>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Right Column: Prescription */}
+                  <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col h-full">
+                     <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-blue-500" /> औषधी सिफारिस (Prescription)
+                     </h4>
+                     
+                     <div className="space-y-4 mb-4">
+                        <div className="relative">
+                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                           <input 
+                              type="text" 
+                              className="w-full pl-9 p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                              placeholder="औषधि खोज्नुहोस्..."
+                              value={medSearch}
+                              onChange={(e) => setMedSearch(e.target.value)}
+                           />
+                           {medSearch && filteredMeds.length > 0 && (
+                              <div className="absolute top-full left-0 w-full bg-white border border-slate-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto z-10">
+                                 {filteredMeds.map(med => (
+                                    <div 
+                                       key={med.id} 
+                                       className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-0"
+                                       onClick={() => { setSelectedMed(med); setMedSearch(med.name); }}
+                                    >
+                                       <div className="font-bold text-sm text-slate-700">{med.name}</div>
+                                       <div className="text-xs text-slate-500 flex justify-between">
+                                          <span>{med.genericName}</span>
+                                          <span className="font-mono bg-slate-100 px-1 rounded">Stock: {med.stock}</span>
+                                       </div>
+                                    </div>
+                                 ))}
+                              </div>
+                           )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                           <input type="text" placeholder="Dose (e.g. 500mg)" className="p-2 border border-slate-200 rounded text-sm" value={dose} onChange={e => setDose(e.target.value)} />
+                           <select className="p-2 border border-slate-200 rounded text-sm bg-white" value={freq} onChange={e => setFreq(e.target.value)}>
+                              {frequencyOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                           </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 items-center">
+                           <div className="flex items-center gap-1 border border-slate-200 rounded px-2 bg-white">
+                              <input type="number" placeholder="Duration" className="w-full p-2 text-sm outline-none" value={duration} onChange={e => setDuration(e.target.value)} />
+                              <span className="text-xs text-slate-400 font-bold">Days</span>
+                           </div>
+                           <button 
+                              onClick={addMedicineToPrescription}
+                              disabled={!selectedMed}
+                              className="bg-blue-600 text-white p-2 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+                           >
+                              सूचीमा थप्नुहोस्
+                           </button>
+                        </div>
+                     </div>
+
+                     <div className="flex-1 bg-slate-50 rounded-lg border border-slate-200 p-2 overflow-y-auto">
+                        {prescriptionList.length === 0 ? (
+                           <div className="h-full flex items-center justify-center text-slate-400 text-sm italic">कुनै औषधि थपिएको छैन</div>
+                        ) : (
+                           <div className="space-y-2">
+                              {prescriptionList.map((item, idx) => (
+                                 <div key={idx} className="bg-white p-3 rounded border border-slate-200 shadow-sm flex justify-between items-start">
+                                    <div>
+                                       <div className="font-bold text-slate-800 text-sm">{item.medicineName}</div>
+                                       <div className="text-xs text-slate-500 mt-1">
+                                          {item.dosage} • {item.frequency} • {item.duration}
+                                       </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                       <span className="text-xs font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-600">Qty: {item.quantity}</span>
+                                       <button onClick={() => removeMedicineFromPrescription(idx)} className="text-red-400 hover:text-red-600 text-xs">हटाउनुहोस्</button>
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+                  </div>
+
+               </div>
+             </div>
+
+             <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
+               <button onClick={() => setActiveConsultation(null)} className="px-6 py-3 text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 font-medium">रद्द गर्नुहोस्</button>
+               <button onClick={handleCompleteConsultation} className="px-6 py-3 bg-teal-600 text-white rounded-xl hover:bg-teal-700 font-medium shadow-lg shadow-teal-900/20 flex items-center gap-2">
+                  <Save className="w-4 h-4" /> सुरक्षित र बिलिङमा पठाउनुहोस्
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
+
+       {/* HISTORY DETAILS MODAL */}
+       {selectedHistory && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]">
+               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+                  <h3 className="text-lg font-bold text-slate-800">बिरामीको विस्तृत विवरण (History)</h3>
+                  <button onClick={() => setSelectedHistory(null)} className="text-slate-400 hover:text-slate-600">
+                     <X className="w-6 h-6" />
+                  </button>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto p-6 bg-white">
+                  {/* Patient Card */}
+                  <div className="flex items-start gap-4 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                     <div className="h-12 w-12 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-bold text-lg">
+                        {selectedHistory.patientName.charAt(0)}
+                     </div>
+                     <div>
+                        <h2 className="text-xl font-bold text-slate-900">{selectedHistory.patientName}</h2>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500 mt-1">
+                           <span>ID: <span className="font-mono text-slate-700">{selectedHistory.patientId}</span></span>
+                           <span>Age: {selectedHistory.age}</span>
+                           <span>Gender: {selectedHistory.gender}</span>
+                           <span>Contact: {selectedHistory.contactNo}</span>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Visit Details */}
+                  <div className="space-y-6">
+                     <section>
+                        <h4 className="font-bold text-slate-700 mb-2 border-b pb-1 text-sm uppercase tracking-wide">Diagnosis & Findings</h4>
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 text-sm space-y-2">
+                           <p><strong className="text-slate-600">Service:</strong> {selectedHistory.serviceType}</p>
+                           <p><strong className="text-slate-600">Diagnosis:</strong> {selectedHistory.diagnosis || 'N/A'}</p>
+                           <p><strong className="text-slate-600">Findings:</strong> {selectedHistory.findings || 'N/A'}</p>
+                        </div>
+                     </section>
+
+                     {selectedHistory.prescription && selectedHistory.prescription.length > 0 && (
+                        <section>
+                           <h4 className="font-bold text-slate-700 mb-2 border-b pb-1 text-sm uppercase tracking-wide">Prescription</h4>
+                           <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                              <table className="w-full text-sm text-left">
+                                 <thead className="bg-slate-50">
+                                    <tr>
+                                       <th className="p-2 font-semibold text-slate-600">Medicine</th>
+                                       <th className="p-2 font-semibold text-slate-600">Dose</th>
+                                       <th className="p-2 font-semibold text-slate-600">Freq</th>
+                                       <th className="p-2 font-semibold text-slate-600 text-right">Qty</th>
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-slate-100">
+                                    {selectedHistory.prescription.map((p, i) => (
+                                       <tr key={i}>
+                                          <td className="p-2">{p.medicineName}</td>
+                                          <td className="p-2 text-slate-500">{p.dosage}</td>
+                                          <td className="p-2 text-slate-500">{p.frequency}</td>
+                                          <td className="p-2 text-right font-mono">{p.quantity}</td>
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                        </section>
+                     )}
+
+                     {selectedHistory.labRequests && selectedHistory.labRequests.length > 0 && (
+                        <section>
+                           <h4 className="font-bold text-slate-700 mb-2 border-b pb-1 text-sm uppercase tracking-wide">Lab Reports</h4>
+                           <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 space-y-2">
+                              {selectedHistory.labRequests.map((l, i) => (
+                                 <div key={i} className="flex justify-between items-center text-sm border-b border-purple-100 last:border-0 pb-1 last:pb-0">
+                                    <span className="font-medium text-purple-900">{l.testName}</span>
+                                    <span className={`px-2 py-0.5 rounded text-xs ${l.result ? 'bg-white text-slate-700 border' : 'bg-yellow-100 text-yellow-700'}`}>
+                                       {l.result || 'Pending'}
+                                    </span>
+                                 </div>
+                              ))}
+                           </div>
+                        </section>
+                     )}
+
+                     {/* Past Timeline */}
+                     {patientFullHistory.length > 0 && (
+                        <section className="pt-4 border-t border-slate-200">
+                           <h4 className="font-bold text-slate-400 mb-3 text-xs uppercase tracking-wide flex items-center gap-2">
+                              <Clock className="w-3 h-3" /> Previous Visits
+                           </h4>
+                           <div className="space-y-3 pl-2 border-l-2 border-slate-200">
+                              {patientFullHistory.map(h => (
+                                 <div key={h.id} className="pl-4 relative">
+                                    <div className="absolute -left-[21px] top-1.5 w-3 h-3 bg-slate-300 rounded-full border-2 border-white"></div>
+                                    <div className="text-xs text-slate-500">{new Date(h.timestamp).toLocaleDateString()}</div>
+                                    <div className="text-sm font-medium text-slate-800">{h.diagnosis || h.serviceType}</div>
+                                 </div>
+                              ))}
+                           </div>
+                        </section>
+                     )}
+                  </div>
+               </div>
+
+               <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
+                  <button 
+                     onClick={() => handlePrintReport(selectedHistory)}
+                     className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center gap-2 text-sm font-medium hover:bg-slate-900"
+                  >
+                     <Printer className="w-4 h-4" /> रिपोर्ट प्रिन्ट
+                  </button>
+               </div>
+            </div>
+         </div>
+       )}
+
        {isRabiesModalOpen && activeConsultation && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
              <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]">
@@ -1125,17 +1217,46 @@ export const Services: React.FC<ServicesProps> = ({
                           <p className="text-xs text-slate-500">बिरामी: {activeConsultation.patientName} ({activeConsultation.patientId})</p>
                        </div>
                     </div>
-                    {/* Patient Info Display (Read Only) */}
                     <div className="flex gap-4 items-center bg-white/50 px-3 py-1 rounded-lg border border-slate-200">
-                        <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-500 uppercase font-bold">Age</span>
-                            <span className="text-sm font-bold text-slate-700">{activeConsultation.age} Years</span>
-                        </div>
-                        <div className="w-px h-6 bg-slate-300"></div>
-                        <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-500 uppercase font-bold">Gender</span>
-                            <span className="text-sm font-bold text-slate-700">{activeConsultation.gender}</span>
-                        </div>
+                        {isDemographicsValid ? (
+                            <>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-slate-500 uppercase font-bold">Age</span>
+                                    <span className="text-sm font-bold text-slate-700">{activeConsultation.age} Years</span>
+                                </div>
+                                <div className="w-px h-6 bg-slate-300"></div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-slate-500 uppercase font-bold">Gender</span>
+                                    <span className="text-sm font-bold text-slate-700">{activeConsultation.gender}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-red-500 uppercase font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Update Age</span>
+                                    <input 
+                                        type="number" 
+                                        className="w-16 p-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500" 
+                                        value={tempDemographics.age}
+                                        onChange={e => setTempDemographics({...tempDemographics, age: e.target.value})}
+                                        placeholder="0"
+                                    />
+                                </div>
+                                <div className="w-px h-6 bg-slate-300"></div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] text-red-500 uppercase font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3"/> Update Sex</span>
+                                    <select 
+                                        className="p-1 text-sm border border-red-300 rounded focus:ring-1 focus:ring-red-500"
+                                        value={tempDemographics.gender}
+                                        onChange={e => setTempDemographics({...tempDemographics, gender: e.target.value})}
+                                    >
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <button onClick={() => setIsRabiesModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200">
                        <X className="w-5 h-5" />
@@ -1145,7 +1266,6 @@ export const Services: React.FC<ServicesProps> = ({
                  <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         
-                        {/* Bite Details Section */}
                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
                             <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2">
                                 <Activity className="w-4 h-4 text-red-500" /> घटना विवरण (Incident Details)
@@ -1215,7 +1335,6 @@ export const Services: React.FC<ServicesProps> = ({
                             </div>
                         </div>
 
-                        {/* Vaccine Schedule Section */}
                         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
                             <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-2 flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-blue-500" /> खोप तालिका (Vaccination Schedule - BS)
@@ -1260,7 +1379,6 @@ export const Services: React.FC<ServicesProps> = ({
                                                 checked={isGiven || false} 
                                                 onChange={(e) => {
                                                    const newSchedule = {...rabiesFormData.schedule};
-                                                   // Use a type assertion or explicit assignment to handle the dynamic key
                                                    (newSchedule as any)[keyGiven] = e.target.checked;
                                                    setRabiesFormData({...rabiesFormData, schedule: newSchedule});
                                                 }}
@@ -1272,7 +1390,6 @@ export const Services: React.FC<ServicesProps> = ({
                                 })}
                             </div>
 
-                            {/* NEXT VISIT MONTH DROPDOWN */}
                             <div className="pt-2 border-t border-slate-100">
                                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">दर्ता भएको महिना (Registered Month)</label>
                                 <select 
@@ -1299,207 +1416,6 @@ export const Services: React.FC<ServicesProps> = ({
                  </div>
              </div>
          </div>
-       )}
-
-       {/* Registration Modal - RESTORED */}
-       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-           <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]">
-              <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                 <h3 className="text-lg font-bold text-slate-800">नयाँ बिरामी दर्ता (New Registration)</h3>
-                 <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                    <X className="w-6 h-6" />
-                 </button>
-              </div>
-              
-              <div className="p-6 overflow-y-auto">
-                 <form id="regForm" onSubmit={handleSubmitRegistration} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Patient Name</label>
-                       <input required type="text" className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500" value={formData.patientName} onChange={e => setFormData({...formData, patientName: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Age</label>
-                       <input required type="number" className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500" value={formData.age} onChange={e => setFormData({...formData, age: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Gender</label>
-                       <select className="w-full p-2 border border-slate-200 rounded-lg" value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}>
-                          <option>Male</option>
-                          <option>Female</option>
-                          <option>Other</option>
-                       </select>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Contact No</label>
-                       <input required type="text" className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500" value={formData.contactNo} onChange={e => setFormData({...formData, contactNo: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Address</label>
-                       <input required type="text" className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Ethnicity</label>
-                       <select className="w-full p-2 border border-slate-200 rounded-lg" value={formData.ethnicity} onChange={e => setFormData({...formData, ethnicity: e.target.value})}>
-                          {ethnicityOptions.map(opt => <option key={opt}>{opt}</option>)}
-                       </select>
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Service Type / Department</label>
-                       {preSelectedService ? (
-                          <input type="text" readOnly className="w-full p-2 border border-slate-200 rounded-lg bg-teal-50 font-bold text-teal-700" value={formData.serviceType} />
-                       ) : (
-                          <select className="w-full p-2 border border-slate-200 rounded-lg bg-teal-50 font-medium" value={formData.department} onChange={handleServiceChange}>
-                             {Object.entries(DEPARTMENT_LABELS).map(([key, label]) => (
-                                <option key={key} value={key}>{label}</option>
-                             ))}
-                          </select>
-                       )}
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-sm font-medium text-slate-700">Registration Fee</label>
-                       <input type="number" readOnly className="w-full p-2 border border-slate-200 rounded-lg bg-slate-100" value={formData.cost} />
-                    </div>
-                 </form>
-              </div>
-              
-              <div className="p-6 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
-                 <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 font-medium">रद्द गर्नुहोस्</button>
-                 <button type="submit" form="regForm" className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium">दर्ता गर्नुहोस्</button>
-              </div>
-           </div>
-        </div>
-       )}
-
-       {/* Detailed History View */}
-       {selectedHistory && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-             <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh]">
-                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                   <div className="flex items-center gap-3">
-                      <div className="bg-blue-600 p-2 rounded-lg text-white">
-                         <FileText className="w-6 h-6" />
-                      </div>
-                      <div>
-                         <h3 className="text-lg font-bold text-slate-800">सेवा विवरण (Service Details)</h3>
-                         <p className="text-xs text-slate-500">ID: {selectedHistory.id} • Date: {new Date(selectedHistory.timestamp).toLocaleDateString()}</p>
-                      </div>
-                   </div>
-                   <button onClick={() => setSelectedHistory(null)} className="text-slate-400 hover:text-slate-600">
-                      <X className="w-6 h-6" />
-                   </button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
-                    {/* Patient Info Card */}
-                    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
-                        <div className="flex items-start gap-4">
-                            <div className="bg-slate-100 p-3 rounded-full">
-                                <User className="w-8 h-8 text-slate-500" />
-                            </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 flex-1">
-                                <div>
-                                    <p className="text-xs text-slate-500 uppercase font-bold">Patient Name</p>
-                                    <p className="font-medium text-slate-900">{selectedHistory.patientName}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-slate-500 uppercase font-bold">ID / Age</p>
-                                    <p className="font-medium text-slate-900">{selectedHistory.patientId} / {selectedHistory.age}y</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-slate-500 uppercase font-bold">Contact / Address</p>
-                                    <p className="font-medium text-slate-900">{selectedHistory.contactNo || '-'} / {selectedHistory.address}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-slate-500 uppercase font-bold">Facility</p>
-                                    <p className="font-medium text-slate-900">{selectedHistory.organizationId || 'Main'}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Clinical Details */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                                <Activity className="w-4 h-4 text-teal-600" /> Diagnosis & Findings
-                            </h4>
-                            <div className="space-y-3">
-                                <div>
-                                    <span className="text-xs font-bold text-slate-500 uppercase block mb-1">Diagnosis</span>
-                                    <p className="text-sm text-slate-800 bg-slate-50 p-2 rounded border border-slate-100">{selectedHistory.diagnosis || 'Not recorded'}</p>
-                                </div>
-                                <div>
-                                    <span className="text-xs font-bold text-slate-500 uppercase block mb-1">Clinical Notes</span>
-                                    <p className="text-sm text-slate-600 leading-relaxed">{selectedHistory.findings || 'No notes available.'}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Prescription & Services */}
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-3 flex items-center gap-2">
-                                <Pill className="w-4 h-4 text-blue-600" /> Prescriptions & Services
-                            </h4>
-                            <div className="space-y-4">
-                                {selectedHistory.prescription && selectedHistory.prescription.length > 0 ? (
-                                    <ul className="space-y-2">
-                                        {selectedHistory.prescription.map((med, i) => (
-                                            <li key={i} className="text-sm flex justify-between items-center p-2 bg-slate-50 rounded">
-                                                <span><span className="font-medium">{med.medicineName}</span> <span className="text-slate-500 text-xs">({med.dosage}, {med.frequency})</span></span>
-                                                <span className="font-bold text-slate-600">x{med.quantity}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <p className="text-sm text-slate-400 italic">No medicines prescribed.</p>
-                                )}
-
-                                {selectedHistory.labRequests && selectedHistory.labRequests.length > 0 && (
-                                   <div className="mt-4 pt-4 border-t border-slate-100">
-                                      <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Lab Requests</h5>
-                                      <div className="flex flex-wrap gap-2">
-                                         {selectedHistory.labRequests.map((lab, i) => (
-                                            <span key={i} className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-100">
-                                               {lab.testName} {lab.result && `(${lab.result})`}
-                                            </span>
-                                         ))}
-                                      </div>
-                                   </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Past Timeline */}
-                    {patientFullHistory.length > 0 && (
-                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                            <h4 className="font-bold text-slate-700 border-b border-slate-100 pb-2 mb-4 flex items-center gap-2">
-                                <History className="w-4 h-4 text-slate-500" /> Previous Visits Timeline
-                            </h4>
-                            <div className="space-y-4">
-                                {patientFullHistory.map((rec, i) => (
-                                    <div key={i} className="flex gap-4 relative pl-4 border-l-2 border-slate-100 pb-4 last:pb-0">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 bg-slate-200 rounded-full border-2 border-white"></div>
-                                        <div>
-                                            <p className="text-xs font-bold text-slate-500">{new Date(rec.timestamp).toLocaleDateString()}</p>
-                                            <p className="text-sm font-medium text-slate-800">{rec.serviceType}</p>
-                                            <p className="text-xs text-slate-500">{rec.diagnosis}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 shrink-0">
-                    <button onClick={handlePrintReport} className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 font-medium flex items-center gap-2">
-                        <Printer className="w-4 h-4" /> Print Report
-                    </button>
-                </div>
-             </div>
-          </div>
        )}
     </div>
   );

@@ -21,7 +21,7 @@ import { ReportReproductiveHealth } from './components/ReportReproductiveHealth'
 import { ReportORC } from './components/ReportORC';
 import { Medicine, Sale, AppView, UserPermissions, UserRole, User } from './types';
 import { dbService } from './services/db';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -84,7 +84,29 @@ const App: React.FC = () => {
     settings_Data: false
   });
 
-  // Load Data from IndexedDB on Startup and Check Auth
+  // Shared Data Loader
+  const loadData = async () => {
+    try {
+      const [loadedInventory, loadedSales, loadedUsers] = await Promise.all([
+        dbService.getAllMedicines(),
+        dbService.getAllSales(),
+        dbService.getAllUsers()
+      ]);
+      
+      // Sort sales by timestamp descending
+      setSales(loadedSales.sort((a, b) => b.timestamp - a.timestamp));
+      setInventory(loadedInventory);
+      setAllUsers(loadedUsers);
+      setError(null);
+    } catch (err: any) {
+      console.error("Failed to load database:", err);
+      // Safely handle error object to avoid [object Object]
+      const errorMsg = err?.message || JSON.stringify(err) || "Unknown database error";
+      setError(errorMsg);
+    }
+  };
+
+  // Load Data from DB on Startup and Check Auth
   useEffect(() => {
     // Check Authentication
     const authStatus = localStorage.getItem('isAuthenticated');
@@ -103,27 +125,21 @@ const App: React.FC = () => {
     if (storedOrg) setUserOrgId(storedOrg);
     if (storedFY) setActiveFiscalYear(storedFY);
 
-    const loadData = async () => {
-      try {
-        const [loadedInventory, loadedSales, loadedUsers] = await Promise.all([
-          dbService.getAllMedicines(),
-          dbService.getAllSales(),
-          dbService.getAllUsers()
-        ]);
-        
-        // Sort sales by timestamp descending
-        setSales(loadedSales.sort((a, b) => b.timestamp - a.timestamp));
-        setInventory(loadedInventory);
-        setAllUsers(loadedUsers);
-      } catch (err) {
-        console.error("Failed to load database:", err);
-        setError("Failed to load database. Please refresh.");
-      } finally {
+    const init = async () => {
+        await loadData();
         setIsLoading(false);
-      }
     };
+    init();
 
-    loadData();
+    // Subscribe to Realtime Changes
+    const unsubscribe = dbService.subscribeToChanges(() => {
+       console.log("Remote changes detected, refreshing data...");
+       loadData();
+    });
+
+    return () => {
+       unsubscribe();
+    };
   }, []);
 
   // When login successful, store session data
@@ -154,7 +170,6 @@ const App: React.FC = () => {
 
   // ----- Data Filtering Logic -----
   
-  // 1. Determine the "Active Organization Context" for creating new items
   const activeOrgContext = useMemo(() => {
      if (userRole === UserRole.SUPER_ADMIN) {
         return orgFilter === 'ALL' ? 'ALL' : orgFilter;
@@ -162,7 +177,6 @@ const App: React.FC = () => {
      return userOrgId;
   }, [userRole, orgFilter, userOrgId]);
 
-  // 2. Filter Inventory based on Role and Filter Selection
   const filteredInventory = useMemo(() => {
      if (userRole === UserRole.SUPER_ADMIN) {
         if (orgFilter === 'ALL') return inventory;
@@ -171,7 +185,6 @@ const App: React.FC = () => {
      return inventory.filter(i => i.organizationId === userOrgId);
   }, [inventory, userRole, orgFilter, userOrgId]);
 
-  // 3. Filter Sales
   const filteredSales = useMemo(() => {
      if (userRole === UserRole.SUPER_ADMIN) {
         if (orgFilter === 'ALL') return sales;
@@ -180,14 +193,12 @@ const App: React.FC = () => {
      return sales.filter(s => s.organizationId === userOrgId);
   }, [sales, userRole, orgFilter, userOrgId]);
 
-  // 4. Available Organizations List (for Super Admin Dropdown)
   const organizationList = useMemo(() => {
      const orgs = new Set<string>();
-     orgs.add('MAIN'); // Default
+     orgs.add('MAIN'); 
      allUsers.forEach(u => {
         if (u.organizationId) orgs.add(u.organizationId);
      });
-     // Scan inventory/sales for any other org IDs that might exist
      inventory.forEach(i => { if (i.organizationId) orgs.add(i.organizationId); });
      return Array.from(orgs).sort();
   }, [allUsers, inventory]);
@@ -198,14 +209,13 @@ const App: React.FC = () => {
   const handleAddMedicine = async (medicine: Medicine) => {
     if (!permissions.inventoryAdd) return;
     try {
-      // Ensure we have a valid org context. If ALL, creating is disabled in UI, but double check here.
       if (activeOrgContext === 'ALL') {
          alert("Please select a specific organization to add medicines.");
          return;
       }
-
       const newMed = { ...medicine, organizationId: activeOrgContext };
       await dbService.addMedicine(newMed);
+      // No need to setInventory manually if realtime works, but good for instant feedback
       setInventory(prev => [...prev, newMed]);
     } catch (err) {
       console.error("Error adding medicine", err);
@@ -242,15 +252,11 @@ const App: React.FC = () => {
          return;
       }
 
-      // Tag sale with org
       const saleWithOrg = { ...sale, organizationId: activeOrgContext };
 
-      // Calculate new stock states for the filtered inventory subset
       const updatedMedicines: Medicine[] = [];
       const newInventoryState = inventory.map(item => {
-        // Only update items belonging to this org
         if (item.organizationId !== activeOrgContext) return item;
-
         const cartItem = sale.items.find(c => c.id === item.id);
         if (cartItem) {
           const updatedItem = { ...item, stock: item.stock - cartItem.quantity };
@@ -260,10 +266,8 @@ const App: React.FC = () => {
         return item;
       });
 
-      // Perform DB Transaction
       await dbService.processSale(saleWithOrg, updatedMedicines);
 
-      // Update Local State
       setSales(prev => [saleWithOrg, ...prev]);
       setInventory(newInventoryState);
       
@@ -281,7 +285,6 @@ const App: React.FC = () => {
         }
         const saleWithOrg = { ...sale, organizationId: activeOrgContext };
         
-        // No inventory updates for service billing, just save the sale
         await dbService.processSale(saleWithOrg, []);
         setSales(prev => [saleWithOrg, ...prev]);
      } catch (err) {
@@ -291,7 +294,6 @@ const App: React.FC = () => {
   };
 
   const handleServiceComplete = (updatedInventory: Medicine[], newSale: Sale) => {
-    // Merge updated filtered items back into main inventory
     const newMainInventory = inventory.map(item => {
        const updated = updatedInventory.find(u => u.id === item.id);
        return updated || item;
@@ -304,174 +306,39 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 gap-4">
         <Loader2 className="w-10 h-10 text-teal-600 animate-spin" />
-        <h2 className="text-slate-600 font-medium">Loading PharmaFlow...</h2>
+        <h2 className="text-slate-600 font-medium">Connecting to Cloud...</h2>
       </div>
     );
+  }
+
+  // Error State - Critical
+  if (error) {
+     return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 gap-6 p-8 text-center">
+           <div className="bg-red-50 p-4 rounded-full">
+              <AlertCircle className="w-12 h-12 text-red-600" />
+           </div>
+           <div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Database Connection Error</h2>
+              <p className="text-slate-500 max-w-lg mb-4">{error}</p>
+              
+              <div className="text-xs bg-slate-100 p-4 rounded text-left font-mono text-slate-600 overflow-x-auto max-w-2xl border border-slate-200">
+                 <strong>Setup Required:</strong><br/>
+                 Please run the SQL commands in your Supabase SQL Editor to create tables: <br/>
+                 `users`, `medicines`, `sales`, `serviceRecords`, `services`.
+              </div>
+           </div>
+           <button onClick={() => window.location.reload()} className="bg-slate-900 text-white px-6 py-2 rounded-lg hover:bg-slate-800">
+              Retry Connection
+           </button>
+        </div>
+     );
   }
 
   // If not authenticated, show login screen
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />; 
   }
-
-  if (error) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-red-50 text-red-600">
-        <p>{error}</p>
-      </div>
-    );
-  }
-
-  const renderContent = () => {
-    const commonServiceProps = {
-       inventory: filteredInventory,
-       onServiceComplete: handleServiceComplete,
-       permissions: permissions,
-       activeOrgId: activeOrgContext,
-    };
-
-    switch (currentView) {
-      case AppView.DASHBOARD:
-        return <Dashboard 
-           inventory={filteredInventory} 
-           sales={filteredSales} 
-           permissions={permissions} 
-           activeOrgId={activeOrgContext} 
-        />;
-      
-      // New Shortcut for Patient Registration
-      case AppView.PATIENT_REGISTRATION:
-        return <Services 
-           {...commonServiceProps} 
-           department={AppView.GENERAL_TREATMENT} 
-           title="सेवाग्राही दर्ता (Reception)" 
-           autoOpenRegistration={true}
-        />;
-        
-      // --- Dynamic Department Services ---
-      case AppView.GENERAL_TREATMENT:
-        return <Services {...commonServiceProps} department={AppView.GENERAL_TREATMENT} title="General Treatment (OPD)" />;
-        
-      case AppView.X_RAY:
-        return <Services {...commonServiceProps} department={AppView.X_RAY} title="X-Ray Department" />;
-        
-      case AppView.USG:
-        return <Services {...commonServiceProps} department={AppView.USG} title="USG / Video X-Ray" />;
-        
-      case AppView.ECG:
-        return <Services {...commonServiceProps} department={AppView.ECG} title="ECG Service" />;
-        
-      case AppView.DRESSING_MINOR_OT:
-        return <Services {...commonServiceProps} department={AppView.DRESSING_MINOR_OT} title="Dressing & Minor OT" />;
-        
-      case AppView.MCH:
-        return <Services {...commonServiceProps} department={AppView.MCH} title="Maternal & Child Health" />;
-        
-      case AppView.IMMUNIZATION:
-        return <Services {...commonServiceProps} department={AppView.IMMUNIZATION} title="National Immunization Program (NIP)" />;
-        
-      case AppView.TB_LEPROSY:
-        return <Services {...commonServiceProps} department={AppView.TB_LEPROSY} title="TB & Leprosy Clinic" />;
-        
-      case AppView.NUTRITION:
-        return <Services {...commonServiceProps} department={AppView.NUTRITION} title="Nutrition Clinic" />;
-        
-      case AppView.CBIMNCI:
-        return <Services {...commonServiceProps} department={AppView.CBIMNCI} title="CBIMNCI Clinic" />;
-        
-      case AppView.COMMUNICABLE:
-        return <Services {...commonServiceProps} department={AppView.COMMUNICABLE} title="Communicable Disease" />;
-
-      case AppView.RABIES_VACCINE:
-        return <Services 
-            {...commonServiceProps} 
-            department={AppView.COMMUNICABLE} 
-            title="Rabies Vaccine Clinic" 
-            autoOpenRegistration={true}
-            preSelectedService="Rabies Vaccine Registration"
-        />;
-        
-      case AppView.NON_COMMUNICABLE:
-        return <Services {...commonServiceProps} department={AppView.NON_COMMUNICABLE} title="Non-Communicable Disease" />;
-
-      // --- End Department Services ---
-
-      case AppView.REPORT_RABIES:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportRabies activeOrgId={activeOrgContext} currentUser={currentUser} userRole={userRole} />;
-
-      case AppView.REPORT_SERVICE_USER:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportServiceUser activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_IMMUNIZATION:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportImmunization activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_CBIMNCI:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportCBIMNCI activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_NUTRITION:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportNutrition activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_MNH:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportMNH activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_FAMILY_PLANNING:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportFamilyPlanning activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_REPRODUCTIVE_HEALTH:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportReproductiveHealth activeOrgId={activeOrgContext} />;
-
-      case AppView.REPORT_ORC:
-         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ReportORC activeOrgId={activeOrgContext} />;
-
-      case AppView.PATHOLOGY:
-        // Note: We use the dedicated Pathology component for the Lab Dashboard.
-        // If users want to Register patients for Lab, they can use the "Lab Request" feature inside General Treatment 
-        // or we could add a specific registration view here. For now, sticking to the Dashboard view requested earlier.
-        if (!permissions.accessPathology) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <Pathology />;
-
-      case AppView.INVENTORY:
-        if (!permissions.inventoryView) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <Inventory 
-          inventory={filteredInventory} 
-          onAddMedicine={handleAddMedicine}
-          onUpdateMedicine={handleUpdateMedicine}
-          onDeleteMedicine={handleDeleteMedicine}
-          permissions={permissions}
-          activeOrgId={activeOrgContext} 
-        />;
-      case AppView.POS:
-        if (!permissions.posAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <POS 
-           inventory={filteredInventory} 
-           onProcessSale={handleProcessSale}
-           activeOrgId={activeOrgContext}
-        />;
-      case AppView.SERVICE_BILLING:
-         if (!permissions.posAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-         return <ServiceBilling 
-            onProcessBilling={handleProcessServiceBilling}
-            activeOrgId={activeOrgContext}
-         />;
-      case AppView.AI_ASSISTANT:
-        if (!permissions.aiAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <AIAssistant inventory={filteredInventory} />;
-      case AppView.SETTINGS:
-        if (!permissions.manageSettings) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
-        return <Settings inventory={filteredInventory} sales={filteredSales} currentUser={currentUser} permissions={permissions} />;
-      default:
-        return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
-    }
-  };
 
   return (
     <Layout 
@@ -486,7 +353,126 @@ const App: React.FC = () => {
       selectedOrgId={orgFilter}
       onSelectOrg={setOrgFilter}
     >
-      {renderContent()}
+      {/* View Rendering */}
+      {(() => {
+        const commonServiceProps = {
+           inventory: filteredInventory,
+           onServiceComplete: handleServiceComplete,
+           permissions: permissions,
+           activeOrgId: activeOrgContext,
+        };
+
+        switch (currentView) {
+          case AppView.DASHBOARD:
+            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
+          
+          case AppView.PATIENT_REGISTRATION:
+            return <Services {...commonServiceProps} department={AppView.GENERAL_TREATMENT} title="सेवाग्राही दर्ता (Reception)" autoOpenRegistration={true} />;
+            
+          case AppView.GENERAL_TREATMENT:
+            return <Services {...commonServiceProps} department={AppView.GENERAL_TREATMENT} title="General Treatment (OPD)" />;
+            
+          case AppView.X_RAY:
+            return <Services {...commonServiceProps} department={AppView.X_RAY} title="X-Ray Department" />;
+            
+          case AppView.USG:
+            return <Services {...commonServiceProps} department={AppView.USG} title="USG / Video X-Ray" />;
+            
+          case AppView.ECG:
+            return <Services {...commonServiceProps} department={AppView.ECG} title="ECG Service" />;
+            
+          case AppView.DRESSING_MINOR_OT:
+            return <Services {...commonServiceProps} department={AppView.DRESSING_MINOR_OT} title="Dressing & Minor OT" />;
+            
+          case AppView.MCH:
+            return <Services {...commonServiceProps} department={AppView.MCH} title="Maternal & Child Health" />;
+            
+          case AppView.IMMUNIZATION:
+            return <Services {...commonServiceProps} department={AppView.IMMUNIZATION} title="National Immunization Program (NIP)" />;
+            
+          case AppView.TB_LEPROSY:
+            return <Services {...commonServiceProps} department={AppView.TB_LEPROSY} title="TB & Leprosy Clinic" />;
+            
+          case AppView.NUTRITION:
+            return <Services {...commonServiceProps} department={AppView.NUTRITION} title="Nutrition Clinic" />;
+            
+          case AppView.CBIMNCI:
+            return <Services {...commonServiceProps} department={AppView.CBIMNCI} title="CBIMNCI Clinic" />;
+            
+          case AppView.COMMUNICABLE:
+            return <Services {...commonServiceProps} department={AppView.COMMUNICABLE} title="Communicable Disease" />;
+
+          case AppView.RABIES_VACCINE:
+            return <Services {...commonServiceProps} department={AppView.COMMUNICABLE} title="Rabies Vaccine Clinic" autoOpenRegistration={true} preSelectedService="Rabies Vaccine Registration" />;
+            
+          case AppView.NON_COMMUNICABLE:
+            return <Services {...commonServiceProps} department={AppView.NON_COMMUNICABLE} title="Non-Communicable Disease" />;
+
+          // Reports
+          case AppView.REPORT_RABIES:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportRabies activeOrgId={activeOrgContext} currentUser={currentUser} userRole={userRole} />;
+
+          case AppView.REPORT_SERVICE_USER:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportServiceUser activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_IMMUNIZATION:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportImmunization activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_CBIMNCI:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportCBIMNCI activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_NUTRITION:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportNutrition activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_MNH:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportMNH activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_FAMILY_PLANNING:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportFamilyPlanning activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_REPRODUCTIVE_HEALTH:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportReproductiveHealth activeOrgId={activeOrgContext} />;
+
+          case AppView.REPORT_ORC:
+             if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ReportORC activeOrgId={activeOrgContext} />;
+
+          case AppView.PATHOLOGY:
+            if (!permissions.accessPathology) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <Pathology />;
+
+          case AppView.INVENTORY:
+            if (!permissions.inventoryView) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <Inventory inventory={filteredInventory} onAddMedicine={handleAddMedicine} onUpdateMedicine={handleUpdateMedicine} onDeleteMedicine={handleDeleteMedicine} permissions={permissions} activeOrgId={activeOrgContext} />;
+          
+          case AppView.POS:
+            if (!permissions.posAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <POS inventory={filteredInventory} onProcessSale={handleProcessSale} activeOrgId={activeOrgContext} />;
+          
+          case AppView.SERVICE_BILLING:
+             if (!permissions.posAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+             return <ServiceBilling onProcessBilling={handleProcessServiceBilling} activeOrgId={activeOrgContext} />;
+          
+          case AppView.AI_ASSISTANT:
+            if (!permissions.aiAccess) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <AIAssistant inventory={filteredInventory} />;
+          
+          case AppView.SETTINGS:
+            if (!permissions.manageSettings) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+            return <Settings inventory={filteredInventory} sales={filteredSales} currentUser={currentUser} permissions={permissions} />;
+          
+          default:
+            return <Dashboard inventory={filteredInventory} sales={filteredSales} permissions={permissions} activeOrgId={activeOrgContext} />;
+        }
+      })()}
     </Layout>
   );
 };
