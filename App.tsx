@@ -10,6 +10,14 @@ import { Pathology } from './components/Pathology';
 import { AIAssistant } from './components/AIAssistant';
 import { Login } from './components/Login';
 import { Settings } from './components/Settings';
+import { ReportRabies } from './components/ReportRabies';
+import { ReportServiceUser } from './components/ReportServiceUser';
+import { ReportImmunization } from './components/ReportImmunization';
+import { ReportCBIMNCI } from './components/ReportCBIMNCI';
+import { ReportNutrition } from './components/ReportNutrition';
+import { ReportMNH } from './components/ReportMNH';
+import { ReportFamilyPlanning } from './components/ReportFamilyPlanning';
+import { ReportReproductiveHealth } from './components/ReportReproductiveHealth';
 import { Medicine, Sale, AppView, UserPermissions, UserRole, User } from './types';
 import { dbService } from './services/db';
 import { Loader2 } from 'lucide-react';
@@ -64,6 +72,7 @@ const App: React.FC = () => {
     accessNonCommunicable: false,
 
     viewFinancials: false,
+    viewReports: false,
     manageSettings: false,
     manageUsers: false,
     aiAccess: false,
@@ -385,6 +394,38 @@ const App: React.FC = () => {
         return <Services {...commonServiceProps} department={AppView.NON_COMMUNICABLE} title="Non-Communicable Disease" />;
 
       // --- End Department Services ---
+
+      case AppView.REPORT_RABIES:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportRabies activeOrgId={activeOrgContext} currentUser={currentUser} userRole={userRole} />;
+
+      case AppView.REPORT_SERVICE_USER:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportServiceUser activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_IMMUNIZATION:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportImmunization activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_CBIMNCI:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportCBIMNCI activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_NUTRITION:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportNutrition activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_MNH:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportMNH activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_FAMILY_PLANNING:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportFamilyPlanning activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_REPRODUCTIVE_HEALTH:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportReproductiveHealth activeOrgId={activeOrgContext} />;
 
       case AppView.PATHOLOGY:
         // Note: We use the dedicated Pathology component for the Lab Dashboard.

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Shield, Database, LayoutTemplate, Download, CheckCircle, AlertCircle, KeyRound, Users, UserCog, Edit2, X, CheckSquare, Square, Building2, UserPlus, Trash2, CircleDollarSign, Search, Package, Stethoscope, PlusCircle, FlaskConical, ListPlus, MinusCircle, Lock, ShieldCheck, Settings as SettingsIcon } from 'lucide-react';
+import { Save, Shield, Database, LayoutTemplate, Download, CheckCircle, AlertCircle, KeyRound, Users, UserCog, Edit2, X, CheckSquare, Square, Building2, UserPlus, Trash2, CircleDollarSign, Search, Package, Stethoscope, PlusCircle, FlaskConical, ListPlus, MinusCircle, Lock, ShieldCheck, Settings as SettingsIcon, FileBarChart } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Medicine, Sale, User, UserPermissions, UserRole, ServiceCatalogItem, AppView, SubTest } from '../types';
 
@@ -1258,6 +1258,7 @@ export const Settings: React.FC<SettingsProps> = ({ inventory, sales, currentUse
                      </h4>
                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <PermissionToggle label="आर्थिक रिपोर्ट" checked={editingUser.permissions.viewFinancials} onChange={() => togglePermission('viewFinancials')} />
+                        <PermissionToggle label="रिपोर्ट हेर्ने (Reports)" checked={editingUser.permissions.viewReports} onChange={() => togglePermission('viewReports')} />
                         <PermissionToggle label="प्रणाली सेटिङ्स" checked={editingUser.permissions.manageSettings} onChange={() => togglePermission('manageSettings')} disabled={editingUser.username === 'admin'} />
                         <PermissionToggle label="प्रयोगकर्ता व्यवस्थापन" checked={editingUser.permissions.manageUsers} onChange={() => togglePermission('manageUsers')} disabled={editingUser.username === 'admin'} />
                      </div>

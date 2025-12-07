@@ -57,6 +57,17 @@ export enum AppView {
   NON_COMMUNICABLE = 'NON_COMMUNICABLE',
   GENERAL_TREATMENT = 'GENERAL_TREATMENT',
 
+  // Reports
+  REPORT_PARENT = 'REPORT_PARENT',
+  REPORT_RABIES = 'REPORT_RABIES',
+  REPORT_SERVICE_USER = 'REPORT_SERVICE_USER', // New Monthly Progress Report
+  REPORT_IMMUNIZATION = 'REPORT_IMMUNIZATION', // New Khop Report
+  REPORT_CBIMNCI = 'REPORT_CBIMNCI', // New CBIMNCI Report
+  REPORT_NUTRITION = 'REPORT_NUTRITION', // New Nutrition Report
+  REPORT_MNH = 'REPORT_MNH', // New MNH Report
+  REPORT_FAMILY_PLANNING = 'REPORT_FAMILY_PLANNING', // New FP Report
+  REPORT_REPRODUCTIVE_HEALTH = 'REPORT_REPRODUCTIVE_HEALTH', // New RH Report
+
   // Other Modules
   INVENTORY = 'INVENTORY',
   POS = 'POS',
@@ -108,6 +119,7 @@ export interface UserPermissions {
 
   // Admin / System
   viewFinancials: boolean; // Dashboard stats & reports
+  viewReports: boolean;    // Access to general reports menu
   manageSettings: boolean; // Gatekeeper for the Settings Page
   manageUsers: boolean;
   aiAccess: boolean;

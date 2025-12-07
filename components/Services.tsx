@@ -612,17 +612,24 @@ export const Services: React.FC<ServicesProps> = ({
                                        ${permissions.doctorConsultation ? 'group hover:border-teal-200 cursor-pointer' : 'opacity-80'}`}
                                   >
                                      <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 bg-teal-600 text-white rounded-lg flex items-center justify-center font-bold text-lg shadow-sm">
+                                        <div className="flex items-center gap-3 w-full">
+                                            <div className="h-10 w-10 bg-teal-600 text-white rounded-lg flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
                                             {record.queueNumber}
                                             </div>
-                                            <div>
-                                            <div className="font-bold text-slate-800 text-sm">{record.patientName}</div>
-                                            <div className="text-[10px] text-slate-500">{record.gender}, {record.age}y</div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <div className="font-bold text-slate-800 text-sm truncate pr-2">{record.patientName}</div>
+                                                    <div className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-mono whitespace-nowrap">{record.patientId}</div>
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
+                                                    <span>{record.gender}, {record.age}y</span>
+                                                    {record.contactNo && <span>📞 {record.contactNo}</span>}
+                                                    {record.address && <span className="truncate max-w-[150px]">📍 {record.address}</span>}
+                                                </div>
                                             </div>
                                         </div>
                                         {permissions.doctorConsultation && (
-                                            <button className="p-2 text-slate-400 hover:text-teal-600 rounded-lg transition-colors">
+                                            <button className="p-2 text-slate-400 hover:text-teal-600 rounded-lg transition-colors shrink-0">
                                                 <ChevronRight className="w-5 h-5" />
                                             </button>
                                         )}

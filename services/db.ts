@@ -97,6 +97,7 @@ const DEFAULT_PERMISSIONS: UserPermissions = {
   accessNonCommunicable: true,
 
   viewFinancials: true,
+  viewReports: true,
   manageSettings: true,
   manageUsers: true,
   aiAccess: true,
@@ -109,8 +110,13 @@ const DEFAULT_PERMISSIONS: UserPermissions = {
 };
 
 const normalizePermissions = (perms: any): UserPermissions => {
-  if ('settings_Rates' in perms) return perms as UserPermissions;
-  return perms as UserPermissions; // Simplified normalization for brevity
+  if ('viewReports' in perms) return perms as UserPermissions;
+  // Migration logic: give access if admin or has financials view
+  return {
+     ...DEFAULT_PERMISSIONS,
+     ...perms,
+     viewReports: perms.viewFinancials || false
+  }; 
 };
 
 export const dbService = {
@@ -328,6 +334,7 @@ export const dbService = {
          manageSettings: false,
          manageUsers: false,
          viewFinancials: false,
+         viewReports: false,
          settings_General: false,
          settings_Rates: false,
          settings_Users: false,
@@ -338,6 +345,7 @@ export const dbService = {
             ...DEFAULT_PERMISSIONS,
             manageUsers: true,
             manageSettings: true, 
+            viewReports: true,
             settings_General: false, 
             settings_Rates: true,
             settings_Users: true,
