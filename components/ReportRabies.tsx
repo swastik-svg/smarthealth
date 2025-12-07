@@ -101,15 +101,15 @@ export const ReportRabies: React.FC<ReportRabiesProps> = ({ activeOrgId, current
      });
 
      filteredRecords.forEach(r => {
-        const age = r.age;
-        const gender = r.gender; // Male, Female
+        const age = r.age || 0;
+        const gender = (r.gender || '').toLowerCase(); // Normalize
         const animal = r.rabiesData?.animalType || 'Other';
         
         let rowKey = '';
         if (age >= 15) {
-           rowKey = gender === 'Male' ? 'Male15' : 'Female15';
+           rowKey = (gender === 'male' || gender === 'm') ? 'Male15' : 'Female15';
         } else {
-           rowKey = gender === 'Male' ? 'MaleChild' : 'FemaleChild';
+           rowKey = (gender === 'male' || gender === 'm') ? 'MaleChild' : 'FemaleChild';
         }
         
         // Map animal string to key

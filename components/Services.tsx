@@ -416,7 +416,11 @@ export const Services: React.FC<ServicesProps> = ({
      try {
         await dbService.updateRabiesRecord(activeConsultation.id, rabiesFormData);
         // Update local state
-        setRecords(prev => prev.map(r => r.id === activeConsultation.id ? { ...r, status: 'COMPLETED', rabiesData: rabiesFormData } : r));
+        setRecords(prev => prev.map(r => r.id === activeConsultation.id ? { 
+            ...r, 
+            status: 'COMPLETED', 
+            rabiesData: rabiesFormData
+        } : r));
         setIsRabiesModalOpen(false);
         setActiveConsultation(null);
      } catch (e) {
@@ -811,7 +815,7 @@ export const Services: React.FC<ServicesProps> = ({
                             <td className="px-6 py-3 text-right">
                                <button className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded text-slate-600 font-medium">
                                   Details
-                               </button>
+                                </button>
                             </td>
                          </tr>
                       ))
@@ -1121,6 +1125,18 @@ export const Services: React.FC<ServicesProps> = ({
                           <p className="text-xs text-slate-500">बिरामी: {activeConsultation.patientName} ({activeConsultation.patientId})</p>
                        </div>
                     </div>
+                    {/* Patient Info Display (Read Only) */}
+                    <div className="flex gap-4 items-center bg-white/50 px-3 py-1 rounded-lg border border-slate-200">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Age</span>
+                            <span className="text-sm font-bold text-slate-700">{activeConsultation.age} Years</span>
+                        </div>
+                        <div className="w-px h-6 bg-slate-300"></div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-500 uppercase font-bold">Gender</span>
+                            <span className="text-sm font-bold text-slate-700">{activeConsultation.gender}</span>
+                        </div>
+                    </div>
                     <button onClick={() => setIsRabiesModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-200">
                        <X className="w-5 h-5" />
                     </button>
@@ -1153,6 +1169,11 @@ export const Services: React.FC<ServicesProps> = ({
                                         <option>Cat (बिरालो)</option>
                                         <option>Monkey (बाँदर)</option>
                                         <option>Jackal (स्याल)</option>
+                                        <option>Rodent (मुसा)</option>
+                                        <option>Cattle (गाई/भैंसी)</option>
+                                        <option>Tiger (बाघ)</option>
+                                        <option>Bear (भालु)</option>
+                                        <option>Saliva (राल)</option>
                                         <option>Other</option>
                                     </select>
                                 </div>

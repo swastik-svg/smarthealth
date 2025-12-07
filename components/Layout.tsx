@@ -88,6 +88,7 @@ export const Layout: React.FC<LayoutProps> = ({
        hidden: !permissions.viewReports,
        isParent: true,
        children: [
+          { view: AppView.REPORT_ORC, label: 'ORC प्रतिवेदन', icon: FileText },
           { view: AppView.REPORT_MNH, label: 'MNH प्रतिवेदन', icon: FileText },
           { view: AppView.REPORT_IMMUNIZATION, label: 'खोप सेवा प्रतिवेदन', icon: FileText },
           { view: AppView.REPORT_CBIMNCI, label: 'CBIMNCI प्रतिवेदन', icon: FileText },

@@ -18,6 +18,7 @@ import { ReportNutrition } from './components/ReportNutrition';
 import { ReportMNH } from './components/ReportMNH';
 import { ReportFamilyPlanning } from './components/ReportFamilyPlanning';
 import { ReportReproductiveHealth } from './components/ReportReproductiveHealth';
+import { ReportORC } from './components/ReportORC';
 import { Medicine, Sale, AppView, UserPermissions, UserRole, User } from './types';
 import { dbService } from './services/db';
 import { Loader2 } from 'lucide-react';
@@ -426,6 +427,10 @@ const App: React.FC = () => {
       case AppView.REPORT_REPRODUCTIVE_HEALTH:
          if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
          return <ReportReproductiveHealth activeOrgId={activeOrgContext} />;
+
+      case AppView.REPORT_ORC:
+         if (!permissions.viewReports) return <div className="p-8 text-center text-slate-500">Access Denied</div>;
+         return <ReportORC activeOrgId={activeOrgContext} />;
 
       case AppView.PATHOLOGY:
         // Note: We use the dedicated Pathology component for the Lab Dashboard.

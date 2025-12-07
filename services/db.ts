@@ -1,5 +1,5 @@
 
-import { Medicine, Sale, User, UserPermissions, UserRole, ServiceRecord, ServiceStatus, PrescriptionItem, CartItem, LabTest, ServiceItemRequest, ServiceCatalogItem, AppView } from '../types';
+import { Medicine, Sale, User, UserPermissions, UserRole, ServiceRecord, ServiceStatus, PrescriptionItem, CartItem, LabTest, ServiceItemRequest, ServiceCatalogItem, AppView, RabiesData } from '../types';
 
 const DB_NAME = 'PharmaFlowDB';
 const DB_VERSION = 5; 
@@ -262,10 +262,10 @@ export const dbService = {
             id: crypto.randomUUID(),
             patientId: patientId,
             patientName: patientName,
-            age: 0, // Placeholder
+            age: 0, // Placeholder - User must update in clinic
             address: 'See Billing',
             contactNo: '',
-            gender: 'Unknown',
+            gender: 'Unknown', // Placeholder
             ethnicity: '',
             serviceType: 'Rabies Vaccine Registration',
             department: AppView.COMMUNICABLE, // This ensures it shows in Rabies/Communicable view
@@ -564,8 +564,8 @@ export const dbService = {
     });
   },
   
-  // Specific Method to update Rabies Record
-  updateRabiesRecord: async (recordId: string, rabiesData: any): Promise<void> => {
+  // Specific Method to update Rabies Record - simplified to update only data and status
+  updateRabiesRecord: async (recordId: string, rabiesData: RabiesData): Promise<void> => {
      const db = await dbService.open();
      return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_SERVICE_RECORDS], 'readwrite');
